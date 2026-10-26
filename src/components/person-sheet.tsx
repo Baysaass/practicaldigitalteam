@@ -30,7 +30,7 @@ export function PersonSheet({
       <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
         {r && d && (
           <>
-            <SheetHeader>
+            <SheetHeader className="px-6 py-4 pr-14 border-b bg-muted/20">
               <SheetTitle className="flex items-center gap-3 text-lg">
                 <Avatar name={r.person} size="lg" />
                 <div className="flex-1 min-w-0">
@@ -61,7 +61,7 @@ export function PersonSheet({
                 </Button>
               </div>
             </SheetHeader>
-            <div className="space-y-5 p-4">
+            <div className="space-y-5 px-6 py-5">
               <div className="flex items-center justify-between rounded-lg border p-4">
                 <div>
                   <div className="text-xs font-medium text-muted-foreground">Нийт оноо</div>

@@ -646,17 +646,17 @@ function KpiProfileEditSheet({
       <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
         {person && (
           <>
-            <SheetHeader className="border-b pb-3">
+            <SheetHeader className="border-b px-6 py-4 pr-14 bg-muted/20">
               <SheetTitle className="flex items-center gap-2 text-base">
                 <FileSpreadsheet className="size-5 text-primary" />
                 KPI тайлангийн талбар засах · {person}
               </SheetTitle>
-              <SheetDescription>
+              <SheetDescription className="mt-1">
                 Улирал: <span className="font-semibold text-foreground">{period}</span>. Энд бөглөсөн мэдээллүүд албан ёсны KPI Excel тайлангийн 1-р хуудас дээр автоматаар тусна.
               </SheetDescription>
             </SheetHeader>
 
-            <div className="space-y-4 py-4 text-sm">
+            <div className="space-y-5 px-6 py-5 text-sm">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="flex flex-col gap-1">
                   <span className="text-xs font-medium text-muted-foreground">Ажилтны бүтэн овог, нэр</span>
@@ -787,7 +787,7 @@ function KpiProfileEditSheet({
                 </label>
               </div>
 
-              <div className="flex items-center justify-between gap-3 pt-3">
+              <div className="flex items-center justify-between gap-3 pt-4 border-t">
                 <Button
                   type="button"
                   variant="outline"
