@@ -20,27 +20,30 @@ export function PersonSheet({
   onClose: () => void;
 }) {
   const r = result;
-  const d = r ? view.details[r.person] : null;
+  const d = r ? view.details[r.person] ?? { recent: [], history: [] } : null;
   const note = r ? view.ratings[r.person]?.note : null;
   const b = view.benchmark;
-  const scoreDiff = r && b.avgScore ? (r.score ?? 0) - b.avgScore : 0;
+  const scoreDiff = r && r.score != null && b.avgScore ? r.score - b.avgScore : null;
 
   return (
     <Sheet open={!!r} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
         {r && d && (
           <>
-            <SheetHeader className="border-b">
+            <SheetHeader>
               <SheetTitle className="flex items-center gap-3 text-lg">
                 <Avatar name={r.person} size="lg" />
-                <div className="flex-1">
-                  <div className="font-semibold">{r.person}</div>
-                  <div className="text-xs font-normal text-muted-foreground">
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold truncate">{r.person}</div>
+                  <div className="text-xs font-normal text-muted-foreground truncate">
                     {view.sprintName ? `${view.sprintName} · ` : ""}
                     {view.period} ({view.filter.from} — {view.filter.to})
                   </div>
                 </div>
               </SheetTitle>
+              <SheetDescription className="sr-only">
+                {r.person} ажилтны ажлын дэлгэрэнгүй үзүүлэлт болон даалгаврын жагсаалт
+              </SheetDescription>
               <div className="pt-2">
                 <Button
                   variant="default"
@@ -60,7 +63,7 @@ export function PersonSheet({
                 <div>
                   <div className="text-xs font-medium text-muted-foreground">Нийт оноо</div>
                   <div className="text-3xl font-semibold tabular-nums">{r.score == null ? "—" : r.score.toFixed(1)}</div>
-                  {b.avgScore && (
+                  {b.avgScore && scoreDiff != null && (
                     <div className="mt-1 text-xs">
                       Багийн дундаж: {b.avgScore.toFixed(1)}{" "}
                       <span className={scoreDiff >= 0 ? "font-medium text-emerald-600 dark:text-emerald-400" : "font-medium text-red-600 dark:text-red-400"}>
@@ -116,7 +119,7 @@ export function PersonSheet({
                     {d.history.map((h) => (
                       <div key={h.name} className="flex min-w-0 flex-1 flex-col items-center gap-1" title={`${h.name}: ${h.score == null ? "—" : h.score.toFixed(1)}`}>
                         <span className="text-[10px] text-muted-foreground tabular-nums">{h.score == null ? "" : h.score.toFixed(0)}</span>
-                        <div className="w-full rounded-t" style={{ height: (h.score ?? 0) * 0.6, background: "var(--series-1)" }} />
+                        <div className="w-full rounded-t" style={{ height: `${Math.max(4, (h.score ?? 0) * 0.6)}px`, background: "var(--series-1)" }} />
                         <span className="w-full truncate text-center text-[10px] text-muted-foreground">{h.name.replace(/^.*?(\d+)\s*$/, "S$1")}</span>
                       </div>
                     ))}

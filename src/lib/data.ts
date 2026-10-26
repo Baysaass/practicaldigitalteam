@@ -193,7 +193,7 @@ export async function buildView(sp: SearchParams) {
   const recentSprints = allSprints.filter((s) => s.startDate && s.startDate <= now).slice(-8);
   const sprintCtxs = recentSprints.map(ctxFor);
   const details = Object.fromEntries(
-    people.map((p) => {
+    allPeople.map((p) => {
       const mine = C.tasks
         .filter((t) => {
           if (t.assignee !== p) return false;
