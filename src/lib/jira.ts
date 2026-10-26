@@ -67,7 +67,7 @@ async function get(cfg: JiraConfig, path: string, params: Record<string, string>
 export async function searchIssues(cfg: JiraConfig, jql: string, limit = 20_000): Promise<JiraIssue[]> {
   const fields = [
     "summary", "assignee", "status", "issuetype", "priority", "created", "updated", "resolutiondate", "duedate",
-    "timeoriginalestimate", "timespent", cfg.spField, cfg.sprintField,
+    "timeoriginalestimate", "timespent", "parent", "description", "comment", cfg.spField, cfg.sprintField,
   ].join(",");
   const out: JiraIssue[] = [];
   if (cfg.deployment === "cloud") {
@@ -123,6 +123,40 @@ export function parseSprints(raw: unknown): JiraSprint[] {
     .filter((s): s is JiraSprint => !!s && !!s.id && !!s.name);
 }
 
+function extractAdfText(node: unknown): string {
+  if (!node) return "";
+  if (typeof node === "string") return node;
+  if (Array.isArray(node)) {
+    return node.map(extractAdfText).filter(Boolean).join(" ");
+  }
+  if (typeof node === "object") {
+    const o = node as Record<string, unknown>;
+    if (o.type === "text" && typeof o.text === "string") return o.text;
+    if (Array.isArray(o.content)) {
+      return o.content.map(extractAdfText).filter(Boolean).join(" ");
+    }
+  }
+  return "";
+}
+
+function extractComments(raw: unknown): string {
+  if (!raw) return "";
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    const list = Array.isArray(o.comments) ? o.comments : [];
+    return list
+      .map((c: any) => {
+        const author = c.author?.displayName ? `${c.author.displayName}: ` : "";
+        const body = extractAdfText(c.body).trim();
+        return body ? `${author}${body}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
+
 /** Map a Jira issue to our row, deriving taken / started / reopens from the changelog. */
 export function normalizeIssue(cfg: JiraConfig, issue: JiraIssue) {
   const f = issue.fields;
@@ -146,6 +180,12 @@ export function normalizeIssue(cfg: JiraConfig, issue: JiraIssue) {
   const spRaw = f[cfg.spField];
   const sprintList = parseSprints(f[cfg.sprintField]);
   const due = typeof f.duedate === "string" ? f.duedate : null;
+  const parentObj = f.parent as { key?: string; fields?: { summary?: string } } | undefined;
+  const parentKey = parentObj?.key ?? null;
+  const parentSummary = parentObj?.fields?.summary ?? null;
+  const description = extractAdfText(f.description).trim() || null;
+  const resolutionNotes = extractComments(f.comment).trim() || null;
+
   return {
     sprints: sprintList,
     row: {
@@ -168,6 +208,10 @@ export function normalizeIssue(cfg: JiraConfig, issue: JiraIssue) {
       estimateSec: f.timeoriginalestimate ?? null,
       spentSec: f.timespent ?? null,
       reopens,
+      parentKey,
+      parentSummary,
+      description,
+      resolutionNotes,
       lastSprintId: sprintList.length ? sprintList[sprintList.length - 1].id : null,
       jiraUpdatedAt: date(f.updated),
       syncedAt: new Date(),

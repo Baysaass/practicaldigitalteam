@@ -50,11 +50,32 @@ export function Filters({
           ))}
         </select>
       </Labeled>
+      <Labeled label="Улирал">
+        <select
+          className={cn(field, "pr-7")}
+          value={filter.quarter || ""}
+          onChange={(e) => {
+            const q = e.target.value;
+            if (q) {
+              set({ sprint: null, quarter: q, from: null, to: null });
+            } else {
+              set({ quarter: null });
+            }
+          }}
+        >
+          <option value="">Огноогоор</option>
+          {["2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4", "2025-Q4", "2025-Q3"].map((q) => (
+            <option key={q} value={q}>
+              {q}
+            </option>
+          ))}
+        </select>
+      </Labeled>
       <Labeled label="Эхлэх">
-        <input type="date" className={field} value={filter.from} disabled={sprintMode} onChange={(e) => set({ from: e.target.value })} />
+        <input type="date" className={field} value={filter.from} disabled={sprintMode} onChange={(e) => set({ quarter: null, from: e.target.value })} />
       </Labeled>
       <Labeled label="Дуусах">
-        <input type="date" className={field} value={filter.to} disabled={sprintMode} onChange={(e) => set({ to: e.target.value })} />
+        <input type="date" className={field} value={filter.to} disabled={sprintMode} onChange={(e) => set({ quarter: null, to: e.target.value })} />
       </Labeled>
       <Labeled label="Ажилтан">
         <select className={cn(field, "pr-7")} value={filter.person ?? ""} onChange={(e) => set({ person: e.target.value || null })}>
@@ -70,9 +91,7 @@ export function Filters({
       <Button variant="outline" className="hidden lg:inline-flex" onClick={() => set({ sprint: null, from: quarterStart, to: today })}>
         Улирал
       </Button>
-      <Button variant="outline" size="icon" aria-label="Хэвлэх" onClick={() => window.print()}>
-        <Printer />
-      </Button>
+      <Button variant="outline" size="icon" aria-label="Хэвлэх" icon={<Printer className="size-4" />} onClick={() => window.print()} />
     </div>
   );
 }

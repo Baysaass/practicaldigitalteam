@@ -1,7 +1,9 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, GradePill, StatusPill } from "@/components/pill";
+import { Download, FileSpreadsheet, TrendingUp } from "lucide-react";
 import type { View } from "@/lib/data";
 import { METRICS, type PersonResult } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
@@ -20,6 +22,9 @@ export function PersonSheet({
   const r = result;
   const d = r ? view.details[r.person] : null;
   const note = r ? view.ratings[r.person]?.note : null;
+  const b = view.benchmark;
+  const scoreDiff = r && b.avgScore ? (r.score ?? 0) - b.avgScore : 0;
+
   return (
     <Sheet open={!!r} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
@@ -28,18 +33,41 @@ export function PersonSheet({
             <SheetHeader className="border-b">
               <SheetTitle className="flex items-center gap-3 text-lg">
                 <Avatar name={r.person} size="lg" />
-                {r.person}
+                <div className="flex-1">
+                  <div className="font-semibold">{r.person}</div>
+                  <div className="text-xs font-normal text-muted-foreground">
+                    {view.sprintName ? `${view.sprintName} · ` : ""}
+                    {view.period} ({view.filter.from} — {view.filter.to})
+                  </div>
+                </div>
               </SheetTitle>
-              <SheetDescription>
-                {view.sprintName ? `${view.sprintName} · ` : ""}
-                {view.filter.from} — {view.filter.to}
-              </SheetDescription>
+              <div className="pt-2">
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="w-full gap-2 text-xs"
+                  onClick={() => {
+                    window.location.href = `/api/export-kpi?person=${encodeURIComponent(r.person)}&quarter=${view.period}`;
+                  }}
+                >
+                  <FileSpreadsheet className="size-4" />
+                  «{r.person}» KPI Excel тайлан татах (.xlsx)
+                </Button>
+              </div>
             </SheetHeader>
             <div className="space-y-5 p-4">
               <div className="flex items-center justify-between rounded-lg border p-4">
                 <div>
                   <div className="text-xs font-medium text-muted-foreground">Нийт оноо</div>
                   <div className="text-3xl font-semibold tabular-nums">{r.score == null ? "—" : r.score.toFixed(1)}</div>
+                  {b.avgScore && (
+                    <div className="mt-1 text-xs">
+                      Багийн дундаж: {b.avgScore.toFixed(1)}{" "}
+                      <span className={scoreDiff >= 0 ? "font-medium text-emerald-600 dark:text-emerald-400" : "font-medium text-red-600 dark:text-red-400"}>
+                        ({scoreDiff >= 0 ? `+${scoreDiff.toFixed(1)}` : scoreDiff.toFixed(1)})
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <GradePill grade={r.grade} />
               </div>
@@ -105,15 +133,44 @@ export function PersonSheet({
                 <div className="mb-2 text-sm font-semibold">Task-ууд</div>
                 <div className="divide-y rounded-lg border">
                   {d.recent.length ? (
-                    d.recent.map((t) => (
-                      <div key={t.key} className="flex items-center gap-3 px-3 py-2">
-                        <span className="w-16 shrink-0 text-xs font-medium">{t.key}</span>
-                        <span className="flex-1 truncate text-sm">{t.summary}</span>
-                        <StatusPill status={t.status} done={t.done} late={t.late} />
-                      </div>
-                    ))
+                    d.recent.map((t) => {
+                      const isSubtask = !!t.parentKey || t.type?.toLowerCase() === "sub-task" || !!t.parentSummary;
+                      const parentTitle = t.parentSummary || t.parentKey;
+                      return (
+                        <div key={t.key} className="flex flex-col gap-1.5 px-3 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="shrink-0 font-mono text-xs font-semibold text-primary">{t.key}</span>
+                            <span className="flex-1 truncate text-sm font-medium">{t.summary}</span>
+                            <StatusPill status={t.status} done={t.done} late={t.late} />
+                          </div>
+                          {isSubtask && (
+                            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-foreground/80">Дэд ажил</span>
+                              {parentTitle && <span className="truncate">Төсөл: {parentTitle}</span>}
+                            </div>
+                          )}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                            {t.type && <span>Төрөл: {t.type}</span>}
+                            {t.storyPoints != null && <span>SP: {t.storyPoints}</span>}
+                            {t.due && <span>Due: {t.due}</span>}
+                            {t.resolved && <span className="text-emerald-600 dark:text-emerald-400">Дууссан: {t.resolved}</span>}
+                            {t.reopens > 0 && <span className="text-amber-600 dark:text-amber-400">Дахин нээгдсэн: {t.reopens}</span>}
+                          </div>
+                          {t.description && (
+                            <div className="rounded bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground line-clamp-2">
+                              {t.description}
+                            </div>
+                          )}
+                          {t.resolutionNotes && (
+                            <div className="rounded bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-700 dark:text-emerald-400 line-clamp-2">
+                              {t.resolutionNotes}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
                   ) : (
-                    <div className="p-3 text-sm text-muted-foreground">Task алга</div>
+                    <div className="p-3 text-sm text-muted-foreground">Энэ хугацаанд task байхгүй байна</div>
                   )}
                 </div>
               </div>

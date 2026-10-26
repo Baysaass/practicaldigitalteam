@@ -44,6 +44,10 @@ export const issues = pgTable("issues", {
   estimateSec: integer("estimate_sec"),
   spentSec: integer("spent_sec"),
   reopens: smallint("reopens").notNull().default(0),
+  parentKey: text("parent_key"),
+  parentSummary: text("parent_summary"),
+  description: text("description"),
+  resolutionNotes: text("resolution_notes"),
   lastSprintId: integer("last_sprint_id"),
   jiraUpdatedAt: ts("jira_updated_at"),
   syncedAt: ts("synced_at").notNull().defaultNow(),
@@ -63,7 +67,7 @@ export const issueSprints = pgTable(
   (t) => [primaryKey({ columns: [t.issueKey, t.sprintId] })],
 );
 
-/** Manager's qualitative rating, one per person per quarter (e.g. "2026-Q4"). */
+/** Manager's qualitative rating & official quarterly KPI fields. */
 export const managerRatings = pgTable(
   "manager_ratings",
   {
@@ -74,6 +78,18 @@ export const managerRatings = pgTable(
     init: smallint("init"),
     resp: smallint("resp"),
     note: text("note"),
+    fullName: text("full_name"),
+    jobTitle: text("job_title"),
+    department: text("department"),
+    role: text("role"),
+    manager: text("manager"),
+    training: text("training"),
+    voluntary: text("voluntary"),
+    improvements: text("improvements"),
+    conclusion: text("conclusion"),
+    lateMinutes: integer("late_minutes").default(0),
+    absentDays: integer("absent_days").default(0),
+    vacationDays: integer("vacation_days").default(0),
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.person, t.period] })],

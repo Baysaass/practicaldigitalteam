@@ -29,6 +29,9 @@ npm run dev            # http://localhost:3000
    ```
 4. **Environment Variables** (Vercel → Project → Settings): `.env.example`-д байгаа бүгдийг бөглөнө. Заавал:
    `DATABASE_URL`, `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_JQL`, `DASHBOARD_USER`, `DASHBOARD_PASSWORD`, `CRON_SECRET` (урт санамсаргүй тэмдэгт мөр, жишээ нь `openssl rand -hex 32`).
+   
+   *Нэмэлт хамгаалалт (Зөвхөн дотоод сүлжээ/оффисоос хандах):*
+   `ALLOWED_IPS`: Оффис эсвэл VPN-ийн гадаад статик IP хаягуудыг таслалаар зааглан оруулна (Жишээ: `202.131.233.10, 202.131.233.0/24`). Тохируулсан үед өөр сүлжээнээс орвол `403 Forbidden` алдаа зааж хаана. Хоосон орхивол зөвхөн Basic Auth ажиллана.
 5. **Deploy.** Deploy хийсний дараа самбарт нэвтэрч **«Jira-аас татах»** дарж эхний өгөгдлөө авна.
 
 ### Өдөр бүрийн автомат татах

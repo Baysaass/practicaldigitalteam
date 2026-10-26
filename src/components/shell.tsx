@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTransition } from "react";
 import { useTheme } from "next-themes";
-import { Award, LayoutDashboard, Moon, RefreshCw, Sun } from "lucide-react";
+import { Award, LayoutDashboard, Lock, Moon, RefreshCw, Sun } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { syncNow } from "@/app/actions";
@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 export const NAV = [
   { href: "/", label: "Хяналтын самбар", icon: LayoutDashboard },
   { href: "/evaluation", label: "Гүйцэтгэлийн үнэлгээ", icon: Award },
+  { href: "/zaki", label: "Удирдлага (PIN)", icon: Lock },
 ] as const;
 
 /** Sidebar on desktop, a tab row on phones (ERPNext desk layout). */
@@ -43,10 +44,18 @@ export function Nav({ mobile = false }: { mobile?: boolean }) {
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
   return (
-    <Button variant="ghost" size="icon" aria-label="Өнгөний горим" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
-      <Sun className="hidden size-4 dark:block" />
-      <Moon className="size-4 dark:hidden" />
-    </Button>
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Өнгөний горим"
+      icon={
+        <>
+          <Sun className="hidden size-4 dark:block" />
+          <Moon className="size-4 dark:hidden" />
+        </>
+      }
+      onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+    />
   );
 }
 
@@ -54,9 +63,10 @@ export function SyncButton() {
   const [pending, start] = useTransition();
   return (
     <Button
-      variant="outline"
+      variant="secondary"
       size="sm"
-      disabled={pending}
+      loading={pending}
+      icon={<RefreshCw className="size-3.5" />}
       onClick={() =>
         start(async () => {
           const r = await syncNow();
@@ -65,7 +75,6 @@ export function SyncButton() {
         })
       }
     >
-      <RefreshCw className={cn("size-3.5", pending && "animate-spin")} />
       {pending ? "Татаж байна…" : "Jira-аас татах"}
     </Button>
   );

@@ -29,7 +29,30 @@ export async function loadWeights(): Promise<Weights> {
 export async function loadRatings(period: string): Promise<Record<string, Rating>> {
   const db = await getDb();
   const rows = await db.select().from(managerRatings).where(eq(managerRatings.period, period));
-  return Object.fromEntries(rows.map((r) => [r.person, { collab: r.collab, comm: r.comm, init: r.init, resp: r.resp, note: r.note }]));
+  return Object.fromEntries(
+    rows.map((r) => [
+      r.person,
+      {
+        collab: r.collab,
+        comm: r.comm,
+        init: r.init,
+        resp: r.resp,
+        note: r.note,
+        fullName: r.fullName,
+        jobTitle: r.jobTitle,
+        department: r.department,
+        role: r.role,
+        manager: r.manager,
+        training: r.training,
+        voluntary: r.voluntary,
+        improvements: r.improvements,
+        conclusion: r.conclusion,
+        lateMinutes: r.lateMinutes,
+        absentDays: r.absentDays,
+        vacationDays: r.vacationDays,
+      },
+    ]),
+  );
 }
 
 export async function lastSync(): Promise<typeof syncRuns.$inferSelect | null> {
@@ -63,6 +86,10 @@ async function loadData(): Promise<{ sprints: Sprint[]; tasks: Task[] }> {
     spentSec: r.spentSec,
     reopens: r.reopens,
     sprintIds: bySprint.get(r.key) ?? [],
+    parentKey: r.parentKey,
+    parentSummary: r.parentSummary,
+    description: r.description,
+    resolutionNotes: r.resolutionNotes,
   }));
   const list: Sprint[] = sp
     .map((s) => ({ id: s.id, name: s.name, state: s.state, startDate: s.startDate, endDate: s.endDate }))
@@ -70,10 +97,25 @@ async function loadData(): Promise<{ sprints: Sprint[]; tasks: Task[] }> {
   return { sprints: list, tasks };
 }
 
-/** Serializable task for client components. */
-export type TaskLite = { key: string; summary: string; status: string; done: boolean; late: boolean; due: string | null; resolved: string | null };
+export type TaskLite = {
+  key: string;
+  summary: string;
+  status: string;
+  done: boolean;
+  late: boolean;
+  due: string | null;
+  resolved: string | null;
+  started: string | null;
+  storyPoints: number | null;
+  type: string | null;
+  reopens: number;
+  parentKey?: string | null;
+  parentSummary?: string | null;
+  description?: string | null;
+  resolutionNotes?: string | null;
+};
 
-export type Filter = { sprintId: number | null; from: string; to: string; person: string | null };
+export type Filter = { sprintId: number | null; from: string; to: string; person: string | null; quarter: string | null };
 
 export async function buildView(sp: SearchParams) {
   const now = new Date();
@@ -81,11 +123,26 @@ export async function buildView(sp: SearchParams) {
   const str = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
 
   const today = dayKey(now);
+  const qParam = str("quarter");
+  let from = isYmd(str("from")) ? str("from")! : `${today.slice(0, 8)}01`;
+  let to = isYmd(str("to")) ? str("to")! : today;
+
+  if (qParam && /^\d{4}-Q[1-4]$/.test(qParam)) {
+    const y = Number(qParam.slice(0, 4));
+    const qn = Number(qParam.slice(6, 7));
+    const sm = (qn - 1) * 3 + 1;
+    const em = qn * 3;
+    const lastDay = new Date(y, em, 0).getDate();
+    from = `${y}-${String(sm).padStart(2, "0")}-01`;
+    to = `${y}-${String(em).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  }
+
   const filter: Filter = {
     sprintId: str("sprint") ? Number(str("sprint")) : null,
-    from: isYmd(str("from")) ? str("from")! : `${today.slice(0, 8)}01`,
-    to: isYmd(str("to")) ? str("to")! : today,
+    from,
+    to,
     person: str("person") || null,
+    quarter: qParam || null,
   };
 
   const sprintTasks = (s: Sprint) => tasks.filter((t) => t.sprintIds.includes(s.id));
@@ -101,7 +158,7 @@ export async function buildView(sp: SearchParams) {
     filter.to = dayKey(C.e);
   }
 
-  const period = quarterOf(C.e);
+  const period = qParam || quarterOf(C.e);
   const ratings = await loadRatings(period);
   const allPeople = peopleOf(tasks);
   const people = filter.person ? [filter.person] : peopleOf(C.tasks);
@@ -115,19 +172,41 @@ export async function buildView(sp: SearchParams) {
   const scored = results.filter((r) => r.score != null);
   const avgScore = scored.length ? scored.reduce((a, r) => a + r.score!, 0) / scored.length : null;
 
-  // person detail: recent tasks + score per sprint (last 8)
+  const validCycles = results.map((r) => r.cycle).filter((c): c is number => c != null && c > 0);
+  const avgCycle = validCycles.length ? validCycles.reduce((a, b) => a + b, 0) / validCycles.length : null;
+  const benchmark = {
+    avgTaken: people.length ? T.taken / people.length : 0,
+    avgDone: people.length ? T.done / people.length : 0,
+    avgSp: people.length ? T.sp / people.length : 0,
+    completion: T.taken ? T.takenDone / T.taken : null,
+    ontime: T.dueN ? T.onTime / T.dueN : null,
+    spi: T.PV ? T.EV / T.PV : null,
+    cpi: T.spent ? T.est / T.spent : null,
+    quality: results.length ? results.reduce((a, r) => a + (r.quality ?? 0), 0) / Math.max(1, results.filter((r) => r.quality != null).length) : null,
+    cycle: avgCycle,
+    avgScore,
+  };
+
+  // person detail: all tasks in the range + score per sprint (last 8)
   const recentSprints = allSprints.filter((s) => s.startDate && s.startDate <= now).slice(-8);
   const sprintCtxs = recentSprints.map(ctxFor);
   const details = Object.fromEntries(
     people.map((p) => {
       const mine = C.tasks
         .filter((t) => t.assignee === p && (C.sprint || (t.takenAt && t.takenAt >= C.s && t.takenAt <= C.e) || (t.resolvedAt && t.resolvedAt >= C.s && t.resolvedAt <= C.e)))
-        .sort((a, b) => (b.takenAt?.getTime() ?? 0) - (a.takenAt?.getTime() ?? 0))
-        .slice(0, 12)
+        .sort((a, b) => (b.resolvedAt?.getTime() ?? b.takenAt?.getTime() ?? 0) - (a.resolvedAt?.getTime() ?? a.takenAt?.getTime() ?? 0))
         .map<TaskLite>((t) => ({
           key: t.key, summary: t.summary, status: t.status, done: t.done,
           late: !t.done && !!t.dueAt && t.dueAt < now,
           due: t.dueAt ? dayKey(t.dueAt) : null, resolved: t.resolvedAt ? dayKey(t.resolvedAt) : null,
+          started: t.startedAt ? dayKey(t.startedAt) : null,
+          storyPoints: t.storyPoints,
+          type: t.type,
+          reopens: t.reopens,
+          parentKey: t.parentKey,
+          parentSummary: t.parentSummary,
+          description: t.description,
+          resolutionNotes: t.resolutionNotes,
         }));
       const history = sprintCtxs
         .filter((c) => c.tasks.some((t) => t.assignee === p))
@@ -145,6 +224,7 @@ export async function buildView(sp: SearchParams) {
     results,
     totals: T,
     avgScore,
+    benchmark,
     daily: dailySeries(C, people),
     details,
     ratings,

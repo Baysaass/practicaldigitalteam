@@ -16,6 +16,10 @@ export type Task = {
   spentSec: number | null;
   reopens: number;
   sprintIds: number[];
+  parentKey?: string | null;
+  parentSummary?: string | null;
+  description?: string | null;
+  resolutionNotes?: string | null;
 };
 
 export type Sprint = {
@@ -26,7 +30,25 @@ export type Sprint = {
   endDate: Date | null;
 };
 
-export type Rating = { collab: number | null; comm: number | null; init: number | null; resp: number | null; note: string | null };
+export type Rating = {
+  collab: number | null;
+  comm: number | null;
+  init: number | null;
+  resp: number | null;
+  note: string | null;
+  fullName?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  role?: string | null;
+  manager?: string | null;
+  training?: string | null;
+  voluntary?: string | null;
+  improvements?: string | null;
+  conclusion?: string | null;
+  lateMinutes?: number | null;
+  absentDays?: number | null;
+  vacationDays?: number | null;
+};
 
 export const METRICS = [
   { k: "completion", n: "Гүйцэтгэл", w: 20 },

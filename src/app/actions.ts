@@ -1,12 +1,40 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { refresh } from "next/cache";
 import { getDb } from "@/db";
 import { managerRatings, settings } from "@/db/schema";
 import { DEFAULT_WEIGHTS, METRICS, QUAL, type Weights } from "@/lib/metrics";
 import { runSync } from "@/lib/sync";
 
-// Every page (and so every action) sits behind the Basic Auth check in src/proxy.ts.
+export async function verifyZakiPin(pin: string): Promise<{ ok: boolean; error?: string }> {
+  const expectedPin = process.env.ZAKI_PIN || "2026";
+  if (pin.trim() === expectedPin.trim()) {
+    const c = await cookies();
+    c.set("zaki_token", "authorized", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7,
+      path: "/",
+    });
+    return { ok: true };
+  }
+  return { ok: false, error: "PIN код буруу байна." };
+}
+
+export async function clearZakiPin(): Promise<{ ok: boolean }> {
+  const c = await cookies();
+  c.delete("zaki_token");
+  refresh();
+  return { ok: true };
+}
+
+export async function isZakiAuthorized(): Promise<boolean> {
+  const c = await cookies();
+  const token = c.get("zaki_token")?.value;
+  return token === "authorized";
+}
 
 export async function syncNow(): Promise<{ ok: boolean; message: string }> {
   try {
@@ -52,4 +80,48 @@ export async function saveWeights(input: Partial<Weights>) {
     .values({ key: "weights", value, updatedAt: new Date() })
     .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } });
   refresh();
+}
+
+export type KpiProfileInput = {
+  fullName?: string;
+  jobTitle?: string;
+  department?: string;
+  role?: string;
+  manager?: string;
+  training?: string;
+  voluntary?: string;
+  improvements?: string;
+  conclusion?: string;
+  lateMinutes?: number;
+  absentDays?: number;
+  vacationDays?: number;
+};
+
+export async function saveKpiProfile(person: string, period: string, data: KpiProfileInput) {
+  if (!person || !/^\d{4}-Q[1-4]$/.test(period)) throw new Error("Буруу ажилтан эсвэл улирал");
+  const db = await getDb();
+  const patch: Record<string, unknown> = {
+    fullName: data.fullName?.trim() || null,
+    jobTitle: data.jobTitle?.trim() || null,
+    department: data.department?.trim() || null,
+    role: data.role?.trim() || null,
+    manager: data.manager?.trim() || null,
+    training: data.training?.trim() || null,
+    voluntary: data.voluntary?.trim() || null,
+    improvements: data.improvements?.trim() || null,
+    conclusion: data.conclusion?.trim() || null,
+    lateMinutes: Number.isFinite(data.lateMinutes) ? Number(data.lateMinutes) : 0,
+    absentDays: Number.isFinite(data.absentDays) ? Number(data.absentDays) : 0,
+    vacationDays: Number.isFinite(data.vacationDays) ? Number(data.vacationDays) : 0,
+    updatedAt: new Date(),
+  };
+  await db
+    .insert(managerRatings)
+    .values({ person, period, ...patch })
+    .onConflictDoUpdate({
+      target: [managerRatings.person, managerRatings.period],
+      set: patch,
+    });
+  refresh();
+  return { ok: true };
 }
