@@ -3,14 +3,16 @@ import { NextResponse, type NextRequest } from "next/server";
 /**
  * Security middleware / proxy for the entire app:
  * 1. IP Whitelist: Restrict access to internal office / VPN static IPs (ALLOWED_IPS).
- * 2. Basic Auth: Employee performance data must remain private (DASHBOARD_USER, DASHBOARD_PASSWORD).
+ *    If ALLOWED_IPS is set, requests outside the whitelist are blocked with 403 Forbidden.
+ * 2. Public / Internal access without password: The dashboard and evaluation pages open directly
+ *    without asking for username/password. Management settings (/zaki) are secured with PIN/password.
  *
  * Excluded from this middleware by matcher:
  * - /api/cron/* (verified by CRON_SECRET)
  * - /_next/* and static assets
  */
 export function proxy(request: NextRequest) {
-  // 1. IP Whitelist check
+  // 1. IP Whitelist check (Internal network security)
   const allowedIpsEnv = process.env.ALLOWED_IPS?.trim();
   if (allowedIpsEnv) {
     const clientIp = getClientIp(request);
@@ -26,24 +28,9 @@ export function proxy(request: NextRequest) {
     }
   }
 
-  // 2. Basic Auth check
-  const user = process.env.DASHBOARD_USER;
-  const pass = process.env.DASHBOARD_PASSWORD;
-  if (!user || !pass) {
-    if (process.env.NODE_ENV !== "production") return NextResponse.next();
-    return new NextResponse("DASHBOARD_USER / DASHBOARD_PASSWORD тохируулагдаагүй байна.", { status: 503 });
-  }
-
-  const header = request.headers.get("authorization") ?? "";
-  if (header.startsWith("Basic ")) {
-    const [u, ...rest] = atob(header.slice(6)).split(":");
-    if (safeEqual(u, user) && safeEqual(rest.join(":"), pass)) return NextResponse.next();
-  }
-
-  return new NextResponse("Нэвтрэх шаардлагатай", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Guitsetgel", charset="UTF-8"' },
-  });
+  // Dashboard and evaluation open directly without HTTP Basic Auth popups.
+  // /zaki is protected by Management PIN in the application.
+  return NextResponse.next();
 }
 
 /**
@@ -218,13 +205,6 @@ function forbiddenResponse(clientIp: string, request: NextRequest) {
     status: 403,
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
-}
-
-function safeEqual(a: string, b: string) {
-  if (a.length !== b.length) return false;
-  let r = 0;
-  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return r === 0;
 }
 
 export const config = {

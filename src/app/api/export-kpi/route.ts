@@ -5,8 +5,9 @@ import fs from "fs";
 import ExcelJS from "exceljs";
 import { getDb } from "@/db";
 import { issues, managerRatings } from "@/db/schema";
-import { eq, and, gte, lte, or } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { dayKey, quarterOf, startOfDay, endOfDay } from "@/lib/time";
+import { generateKpiAiContent, type TaskForAi } from "@/lib/ai-kpi";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -128,6 +129,35 @@ export async function GET(req: NextRequest) {
     const subtaskDone = doneTasks.filter((t) => !!t.parentKey || t.type?.toLowerCase() === "sub-task" || !!t.parentSummary);
     const fullTaskDone = doneTasks.filter((t) => !(!!t.parentKey || t.type?.toLowerCase() === "sub-task" || !!t.parentSummary));
 
+    // Prepare tasks payload and generate AI descriptions if OPENAI_API_KEY is available
+    const tasksForAi: TaskForAi[] = quarterTasks.map((t) => {
+      const isSub = !!t.parentKey || t.type?.toLowerCase() === "sub-task" || !!t.parentSummary;
+      const parentTitle = t.parentSummary || t.parentKey || "";
+      return {
+        key: t.key,
+        summary: t.summary,
+        type: t.type,
+        status: t.status,
+        isDone: t.statusCategory === "done",
+        description: t.description,
+        resolutionNotes: t.resolutionNotes,
+        parentTitle: isSub ? parentTitle : null,
+        storyPoints: t.storyPoints,
+      };
+    });
+
+    const aiContent = await generateKpiAiContent(
+      rating?.fullName || person,
+      displayQuarter,
+      tasksForAi,
+      {
+        total: totalCount,
+        done: doneCount,
+        completionPct,
+        onTimePct,
+      }
+    );
+
     const formatTaskForSummary = (t: (typeof quarterTasks)[number]) => {
       const isSub = !!t.parentKey || t.type?.toLowerCase() === "sub-task" || !!t.parentSummary;
       if (isSub) {
@@ -142,9 +172,17 @@ export async function GET(req: NextRequest) {
       .map(formatTaskForSummary)
       .join("\n");
 
-    ws1.getCell("B9").value = `${displayQuarter} улиралд мэдээллийн технологийн хөгжүүлэлт, системийн найдвартай ажиллагаа, төлөвлөгөөт болон дэд даалгавруудыг чанартай биелүүлэх зорилт тавин ажиллав.\n\nХэрэгжүүлсэн гол төсөл, ажлууд:\n${taskHighlights || "- Төлөвлөгөөт ажлуудыг хуваарийн дагуу бүрэн гүйцэтгэв."}`;
+    if (aiContent.executiveSummary?.goalsSummary) {
+      ws1.getCell("B9").value = `${aiContent.executiveSummary.goalsSummary}\n\nХэрэгжүүлсэн гол төсөл, ажлууд:\n${taskHighlights || "- Төлөвлөгөөт ажлуудыг хуваарийн дагуу бүрэн гүйцэтгэв."}`;
+    } else {
+      ws1.getCell("B9").value = `${displayQuarter} улиралд мэдээллийн технологийн хөгжүүлэлт, системийн найдвартай ажиллагаа, төлөвлөгөөт болон дэд даалгавруудыг чанартай биелүүлэх зорилт тавин ажиллав.\n\nХэрэгжүүлсэн гол төсөл, ажлууд:\n${taskHighlights || "- Төлөвлөгөөт ажлуудыг хуваарийн дагуу бүрэн гүйцэтгэв."}`;
+    }
 
-    ws1.getCell("B19").value = `Тайлант хугацаанд нийт ${totalCount} даалгавраас ${doneCount} ажлыг (${completionPct}% биелэлттэй) амжилттай дуусгасан.\nҮүнд: ${fullTaskDone.length} үндсэн даалгаврыг бүхэлд нь бие даан, ${subtaskDone.length} дэд даалгаврыг тухайн төсөл, багийн ажилд хамрагдан гүйцэтгэсэн.\n\nДэлгэрэнгүй задаргааг '02_Ажлын_жагсаалт' хуудаснаас үзнэ үү.`;
+    if (aiContent.executiveSummary?.resultsSummary) {
+      ws1.getCell("B19").value = `${aiContent.executiveSummary.resultsSummary}\n\nДэлгэрэнгүй задаргааг '02_Ажлын_жагсаалт' хуудаснаас үзнэ үү.`;
+    } else {
+      ws1.getCell("B19").value = `Тайлант хугацаанд нийт ${totalCount} даалгавраас ${doneCount} ажлыг (${completionPct}% биелэлттэй) амжилттай дуусгасан.\nҮүнд: ${fullTaskDone.length} үндсэн даалгаврыг бүхэлд нь бие даан, ${subtaskDone.length} дэд даалгаврыг тухайн төсөл, багийн ажилд хамрагдан гүйцэтгэсэн.\n\nДэлгэрэнгүй задаргааг '02_Ажлын_жагсаалт' хуудаснаас үзнэ үү.`;
+    }
 
     // Training / Development / Social
     ws1.getCell("B20").value =
@@ -197,22 +235,27 @@ export async function GET(req: NextRequest) {
       }
       ws2.getCell(`B${r}`).value = taskName;
 
-      // Column C: Зорилттой холбоо / хариуцсан үүрэг (Distinguish subtask vs full task contribution)
-      let roleDesc = "";
-      if (isSubtask) {
-        roleDesc = `Дэд даалгавар (Оролцсон): ${t.summary}`;
-        if (t.description) {
-          const cleanDesc = t.description.replace(/\s+/g, " ").trim();
-          roleDesc += ` — ${cleanDesc.slice(0, 140)}${cleanDesc.length > 140 ? "..." : ""}`;
-        }
+      // Column C: Зорилттой холбоо / хариуцсан үүрэг (AI generated or fallback)
+      const aiItem = aiContent.tasksMap.get(t.key);
+      if (aiItem?.roleDesc) {
+        ws2.getCell(`C${r}`).value = aiItem.roleDesc;
       } else {
-        roleDesc = `Бүхэлд нь хариуцан гүйцэтгэсэн (${t.type || "Үндсэн даалгавар"}): ${t.summary}`;
-        if (t.description) {
-          const cleanDesc = t.description.replace(/\s+/g, " ").trim();
-          roleDesc += ` — ${cleanDesc.slice(0, 140)}${cleanDesc.length > 140 ? "..." : ""}`;
+        let roleDesc = "";
+        if (isSubtask) {
+          roleDesc = `Дэд даалгавар (Оролцсон): ${t.summary}`;
+          if (t.description) {
+            const cleanDesc = t.description.replace(/\s+/g, " ").trim();
+            roleDesc += ` — ${cleanDesc.slice(0, 140)}${cleanDesc.length > 140 ? "..." : ""}`;
+          }
+        } else {
+          roleDesc = `Бүхэлд нь хариуцан гүйцэтгэсэн (${t.type || "Үндсэн даалгавар"}): ${t.summary}`;
+          if (t.description) {
+            const cleanDesc = t.description.replace(/\s+/g, " ").trim();
+            roleDesc += ` — ${cleanDesc.slice(0, 140)}${cleanDesc.length > 140 ? "..." : ""}`;
+          }
         }
+        ws2.getCell(`C${r}`).value = roleDesc;
       }
-      ws2.getCell(`C${r}`).value = roleDesc;
 
       ws2.getCell(`D${r}`).value = isDone ? "Дууссан" : "Явагдаж байна";
       ws2.getCell(`E${r}`).value = startStr;
@@ -221,22 +264,26 @@ export async function GET(req: NextRequest) {
       ws2.getCell(`I${r}`).value = isDone ? 1.0 : 0.0;
       ws2.getCell(`J${r}`).value = qualityScore;
 
-      // Column K: Тайлбар / нотолгоо (Jira notes: creation description, progress/resolution comment, story points)
-      const notesParts: string[] = [];
-      if (t.description) {
-        const cleanDesc = t.description.replace(/\s+/g, " ").trim();
-        notesParts.push(`Шаардлага: ${cleanDesc.slice(0, 180)}${cleanDesc.length > 180 ? "..." : ""}`);
-      }
-      if (t.resolutionNotes) {
-        const cleanRes = t.resolutionNotes.replace(/\s+/g, " ").trim();
-        notesParts.push(`Гүйцэтгэл: ${cleanRes.slice(0, 180)}${cleanRes.length > 180 ? "..." : ""}`);
-      }
-      if (t.storyPoints) {
-        notesParts.push(`Үнэлгээ: ${t.storyPoints} Story Points`);
+      // Column K: Тайлбар / нотолгоо (AI generated or fallback)
+      if (aiItem?.evidence) {
+        ws2.getCell(`K${r}`).value = aiItem.evidence;
       } else {
-        notesParts.push(`Төлөв: ${t.status || "Дууссан"}`);
+        const notesParts: string[] = [];
+        if (t.description) {
+          const cleanDesc = t.description.replace(/\s+/g, " ").trim();
+          notesParts.push(`Шаардлага: ${cleanDesc.slice(0, 180)}${cleanDesc.length > 180 ? "..." : ""}`);
+        }
+        if (t.resolutionNotes) {
+          const cleanRes = t.resolutionNotes.replace(/\s+/g, " ").trim();
+          notesParts.push(`Гүйцэтгэл: ${cleanRes.slice(0, 180)}${cleanRes.length > 180 ? "..." : ""}`);
+        }
+        if (t.storyPoints) {
+          notesParts.push(`Үнэлгээ: ${t.storyPoints} Story Points`);
+        } else {
+          notesParts.push(`Төлөв: ${t.status || "Дууссан"}`);
+        }
+        ws2.getCell(`K${r}`).value = notesParts.join(" | ");
       }
-      ws2.getCell(`K${r}`).value = notesParts.join(" | ");
     });
 
     // Clear remaining demo rows up to row 100
