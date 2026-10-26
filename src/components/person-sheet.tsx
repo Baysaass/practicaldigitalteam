@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Avatar, GradePill, StatusPill } from "@/components/pill";
+import { Avatar, GradePill, StatusPill, Pill } from "@/components/pill";
 import { Download, FileSpreadsheet, TrendingUp } from "lucide-react";
 import type { View } from "@/lib/data";
 import { METRICS, type PersonResult } from "@/lib/metrics";
@@ -34,7 +34,10 @@ export function PersonSheet({
               <SheetTitle className="flex items-center gap-3 text-lg">
                 <Avatar name={r.person} size="lg" />
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold truncate">{r.person}</div>
+                  <div className="font-semibold truncate flex items-center gap-2">
+                    <span>{r.person}</span>
+                    {view.ratings[r.person]?.status === "inactive" && <Pill tone="orange">Идэвхгүй</Pill>}
+                  </div>
                   <div className="text-xs font-normal text-muted-foreground truncate">
                     {view.sprintName ? `${view.sprintName} · ` : ""}
                     {view.period} ({view.filter.from} — {view.filter.to})

@@ -28,14 +28,17 @@ export function PeopleTable({ view }: { view: View }) {
           </TableRow>
         </TableHeader>
         <TableBody className="tabular-nums">
-          {view.results.map((r) => (
-            <TableRow key={r.person} className="cursor-pointer" onClick={() => setOpen(r)}>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <Avatar name={r.person} />
-                  <span className="font-medium">{r.person}</span>
-                </div>
-              </TableCell>
+          {view.results.map((r) => {
+            const isInactive = view.ratings[r.person]?.status === "inactive";
+            return (
+              <TableRow key={r.person} className={`cursor-pointer ${isInactive ? "opacity-60 bg-muted/20" : ""}`} onClick={() => setOpen(r)}>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Avatar name={r.person} />
+                    <span className="font-medium">{r.person}</span>
+                    {isInactive && <Pill tone="orange">Идэвхгүй</Pill>}
+                  </div>
+                </TableCell>
               <TableCell className="text-right">{r.taken}</TableCell>
               <TableCell className="text-right">{r.done}</TableCell>
               <TableCell>
@@ -54,7 +57,8 @@ export function PeopleTable({ view }: { view: View }) {
                 <GradePill grade={r.grade} />
               </TableCell>
             </TableRow>
-          ))}
+          );
+        })}
         </TableBody>
       </Table>
       <PersonSheet view={view} result={open} onClose={() => setOpen(null)} />

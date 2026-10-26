@@ -49,6 +49,7 @@ export type Rating = {
   lateMinutes?: number | null;
   absentDays?: number | null;
   vacationDays?: number | null;
+  status?: "active" | "inactive" | null;
 };
 
 export const METRICS = [

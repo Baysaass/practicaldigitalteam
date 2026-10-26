@@ -186,3 +186,68 @@ export async function saveKpiProfile(person: string, period: string, data: KpiPr
   refresh();
   return { ok: true };
 }
+
+export async function setPersonStatus(person: string, status: "active" | "inactive"): Promise<{ ok: boolean }> {
+  const isAuth = await isZakiAuthorized();
+  if (!isAuth) throw new Error("Удирдлагын эрх шаардлагатай");
+
+  const db = await getDb();
+  const [settingsRow] = await db.select().from(settings).where(eq(settings.key, "person_profiles"));
+  const currentProfiles = (settingsRow?.value as Record<string, Record<string, unknown>>) || {};
+  currentProfiles[person] = {
+    ...(currentProfiles[person] || {}),
+    status,
+  };
+  await db
+    .insert(settings)
+    .values({ key: "person_profiles", value: currentProfiles, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { value: currentProfiles, updatedAt: new Date() },
+    });
+
+  refresh();
+  return { ok: true };
+}
+
+export async function removePerson(person: string): Promise<{ ok: boolean }> {
+  const isAuth = await isZakiAuthorized();
+  if (!isAuth) throw new Error("Удирдлагын эрх шаардлагатай");
+
+  const db = await getDb();
+  const [row] = await db.select().from(settings).where(eq(settings.key, "excluded_people"));
+  const currentList = Array.isArray(row?.value) ? (row.value as string[]) : [];
+  if (!currentList.includes(person)) {
+    const nextList = [...currentList, person];
+    await db
+      .insert(settings)
+      .values({ key: "excluded_people", value: nextList, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: { value: nextList, updatedAt: new Date() },
+      });
+  }
+
+  refresh();
+  return { ok: true };
+}
+
+export async function restorePerson(person: string): Promise<{ ok: boolean }> {
+  const isAuth = await isZakiAuthorized();
+  if (!isAuth) throw new Error("Удирдлагын эрх шаардлагатай");
+
+  const db = await getDb();
+  const [row] = await db.select().from(settings).where(eq(settings.key, "excluded_people"));
+  const currentList = Array.isArray(row?.value) ? (row.value as string[]) : [];
+  const nextList = currentList.filter((p) => p !== person);
+  await db
+    .insert(settings)
+    .values({ key: "excluded_people", value: nextList, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { value: nextList, updatedAt: new Date() },
+    });
+
+  refresh();
+  return { ok: true };
+}

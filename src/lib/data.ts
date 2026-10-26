@@ -60,6 +60,7 @@ export async function loadRatings(period: string): Promise<Record<string, Rating
       lateMinutes: r.lateMinutes,
       absentDays: r.absentDays,
       vacationDays: r.vacationDays,
+      status: (def.status as "active" | "inactive") || "active",
     };
   }
 
@@ -85,11 +86,18 @@ export async function loadRatings(period: string): Promise<Record<string, Rating
         lateMinutes: 0,
         absentDays: 0,
         vacationDays: 0,
+        status: (def.status as "active" | "inactive") || "active",
       };
     }
   }
 
   return map;
+}
+
+export async function loadExcludedPeople(): Promise<string[]> {
+  const db = await getDb();
+  const [row] = await db.select().from(settings).where(eq(settings.key, "excluded_people"));
+  return Array.isArray(row?.value) ? (row.value as string[]) : [];
 }
 
 export async function lastSync(): Promise<typeof syncRuns.$inferSelect | null> {
@@ -197,9 +205,12 @@ export async function buildView(sp: SearchParams) {
   }
 
   const period = qParam || quarterOf(C.e);
-  const ratings = await loadRatings(period);
-  const allPeople = peopleOf(tasks);
-  const people = filter.person ? [filter.person] : peopleOf(C.tasks);
+  const [ratings, excludedPeople] = await Promise.all([loadRatings(period), loadExcludedPeople()]);
+  const excludedSet = new Set(excludedPeople);
+  const rawAllPeople = peopleOf(tasks);
+  const allPeople = rawAllPeople.filter((p) => !excludedSet.has(p));
+  const rawPeople = filter.person ? [filter.person] : peopleOf(C.tasks);
+  const people = rawPeople.filter((p) => !excludedSet.has(p));
   const results: PersonResult[] = people.map((p) => compute(p, C, ratings[p], weights));
 
   const sum = (k: keyof PersonResult) => results.reduce((a, r) => a + ((r[k] as number) || 0), 0);
@@ -276,6 +287,8 @@ export async function buildView(sp: SearchParams) {
     sprints: [...allSprints].reverse().map((s) => ({ id: s.id, name: s.name, state: s.state })),
     sprintName: sprint?.name ?? null,
     allPeople,
+    allPeopleRaw: rawAllPeople,
+    excludedPeople,
     results,
     totals: T,
     avgScore,

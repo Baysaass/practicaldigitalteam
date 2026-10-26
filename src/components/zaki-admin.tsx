@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, GradePill, Pill } from "@/components/pill";
-import { clearZakiPin, saveKpiProfile, saveRating, saveWeights, syncNow, verifyZakiPin, updateZakiPin, type KpiProfileInput } from "@/app/actions";
+import { clearZakiPin, saveKpiProfile, saveRating, saveWeights, syncNow, verifyZakiPin, updateZakiPin, setPersonStatus, removePerson, restorePerson, type KpiProfileInput } from "@/app/actions";
 import type { View } from "@/lib/data";
 import { METRICS, QUAL, type Weights } from "@/lib/metrics";
 
@@ -376,8 +376,43 @@ function SyncButtonAdmin() {
 
 function KpiProfilesSection({ view }: { view: View }) {
   const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
+  const [pending, start] = useTransition();
 
   const selectedRating = selectedPerson ? view.ratings[selectedPerson] : null;
+
+  const handleToggleStatus = (person: string, nextStatus: "active" | "inactive") => {
+    start(async () => {
+      try {
+        await setPersonStatus(person, nextStatus);
+        toast.success(`${person}: ${nextStatus === "active" ? "Идэвхтэй" : "Идэвхгүй"} төлөвт шилжүүллээ`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Алдаа гарлаа");
+      }
+    });
+  };
+
+  const handleRemove = (person: string) => {
+    if (!window.confirm(`«${person}» ажилтныг гүйцэтгэлийн үнэлгээнээс хасахдаа итгэлтэй байна уу?`)) return;
+    start(async () => {
+      try {
+        await removePerson(person);
+        toast.success(`${person} ажилтныг амжилттай хаслаа`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Алдаа гарлаа");
+      }
+    });
+  };
+
+  const handleRestore = (person: string) => {
+    start(async () => {
+      try {
+        await restorePerson(person);
+        toast.success(`${person} ажилтныг амжилттай сэргээлээ`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Алдаа гарлаа");
+      }
+    });
+  };
 
   return (
     <>
@@ -388,7 +423,7 @@ function KpiProfilesSection({ view }: { view: View }) {
             KPI тайлангийн албан талбарууд (Sheet 1) · {view.period}
           </CardTitle>
           <CardDescription>
-            Албан тушаал, хэлтэс, хариуцсан үүрэг, сургалт хөгжил, сайн дурын ажил, удирдлагын дүгнэлт болон ирцийн мэдээллийг тохируулах
+            Албан тушаал, хэлтэс, хариуцсан үүрэг, сургалт хөгжил, сайн дурын ажил, удирдлагын дүгнэлт болон ирцийн мэдээллийг тохируулах. Мөн ажилтныг active/inactive болгох, хасах боломжтой.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-0">
@@ -400,21 +435,26 @@ function KpiProfilesSection({ view }: { view: View }) {
                   <TableHead>Албан тушаал / Үүрэг</TableHead>
                   <TableHead>Нэгж / Хэлтэс</TableHead>
                   <TableHead className="text-center">Ирц (Хоцролт / Таслалт / Амралт)</TableHead>
-                  <TableHead className="text-center">Төлөв</TableHead>
-                  <TableHead className="w-40 text-right">Үйлдэл</TableHead>
+                  <TableHead className="text-center">Төлөв (Active)</TableHead>
+                  <TableHead className="text-center">KPI талбар</TableHead>
+                  <TableHead className="w-56 text-right">Үйлдэл</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {view.results.map(({ person }) => {
                   const r = view.ratings[person];
                   const hasCustom = !!(r?.jobTitle || r?.department || r?.conclusion || r?.training || r?.voluntary);
+                  const isInactive = r?.status === "inactive";
                   return (
-                    <TableRow key={person}>
+                    <TableRow key={person} className={isInactive ? "opacity-60 bg-muted/20" : ""}>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Avatar name={person} />
                           <div>
-                            <div className="font-medium">{r?.fullName || person}</div>
+                            <div className="font-medium flex items-center gap-1.5">
+                              {r?.fullName || person}
+                              {isInactive && <Pill tone="orange">Идэвхгүй</Pill>}
+                            </div>
                             {r?.fullName && <div className="text-[11px] text-muted-foreground">{person}</div>}
                           </div>
                         </div>
@@ -435,6 +475,11 @@ function KpiProfilesSection({ view }: { view: View }) {
                         {r?.lateMinutes ?? 0}м / {r?.absentDays ?? 0}ө / {r?.vacationDays ?? 0}ө
                       </TableCell>
                       <TableCell className="text-center">
+                        <Pill tone={isInactive ? "orange" : "green"}>
+                          {isInactive ? "Идэвхгүй" : "Идэвхтэй"}
+                        </Pill>
+                      </TableCell>
+                      <TableCell className="text-center">
                         {hasCustom ? (
                           <Pill tone="green">Бөглөгдсөн</Pill>
                         ) : (
@@ -443,6 +488,15 @@ function KpiProfilesSection({ view }: { view: View }) {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs"
+                            onClick={() => handleToggleStatus(person, isInactive ? "active" : "inactive")}
+                            title={isInactive ? "Идэвхжүүлэх" : "Идэвхгүй болгох"}
+                          >
+                            {isInactive ? "Идэвхжүүлэх" : "Идэвхгүй"}
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -463,6 +517,15 @@ function KpiProfilesSection({ view }: { view: View }) {
                           >
                             <Download className="size-3.5 text-muted-foreground" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                            title="Ажилтныг хасах"
+                            onClick={() => handleRemove(person)}
+                          >
+                            Хасах
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -473,6 +536,38 @@ function KpiProfilesSection({ view }: { view: View }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Restoring Excluded People Card */}
+      {view.excludedPeople && view.excludedPeople.length > 0 && (
+        <Card className="border-dashed border-muted-foreground/30">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center justify-between">
+              <span>Хасагдсан ажилтнууд ({view.excludedPeople.length})</span>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Эдгээр хүмүүс Jira-д бүртгэлтэй боловч үнэлгээний самбараас хасагдсан байна. Хэрэгтэй үед эндээс буцаан сэргээх боломжтой.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {view.excludedPeople.map((p) => (
+                <div key={p} className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-xs">
+                  <Avatar name={p} size="sm" />
+                  <span className="font-medium text-foreground">{p}</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-1.5 text-xs text-primary hover:underline"
+                    onClick={() => handleRestore(p)}
+                  >
+                    Сэргээх
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <KpiProfileEditSheet
         person={selectedPerson}
