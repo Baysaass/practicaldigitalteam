@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, GradePill, StatusPill, Pill } from "@/components/pill";
 import { Download, FileSpreadsheet, TrendingUp } from "lucide-react";
+import { DownloadKpiDialog } from "@/components/download-kpi-dialog";
 import type { View } from "@/lib/data";
 import { METRICS, type PersonResult } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
@@ -24,43 +26,43 @@ export function PersonSheet({
   const note = r ? view.ratings[r.person]?.note : null;
   const b = view.benchmark;
   const scoreDiff = r && r.score != null && b.avgScore ? r.score - b.avgScore : null;
+  const [downloadOpen, setDownloadOpen] = useState(false);
 
   return (
-    <Sheet open={!!r} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
-        {r && d && (
-          <>
-            <SheetHeader className="px-6 py-4 pr-14 border-b bg-muted/20">
-              <SheetTitle className="flex items-center gap-3 text-lg">
-                <Avatar name={r.person} size="lg" />
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold truncate flex items-center gap-2">
-                    <span>{r.person}</span>
-                    {view.ratings[r.person]?.status === "inactive" && <Pill tone="orange">Идэвхгүй</Pill>}
+    <>
+      <Sheet open={!!r} onOpenChange={(o) => !o && onClose()}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+          {r && d && (
+            <>
+              <SheetHeader className="px-6 py-4 pr-14 border-b bg-muted/20">
+                <SheetTitle className="flex items-center gap-3 text-lg">
+                  <Avatar name={r.person} size="lg" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold truncate flex items-center gap-2">
+                      <span>{r.person}</span>
+                      {view.ratings[r.person]?.status === "inactive" && <Pill tone="orange">Идэвхгүй</Pill>}
+                    </div>
+                    <div className="text-xs font-normal text-muted-foreground truncate">
+                      {view.sprintName ? `${view.sprintName} · ` : ""}
+                      {view.period} ({view.filter.from} — {view.filter.to})
+                    </div>
                   </div>
-                  <div className="text-xs font-normal text-muted-foreground truncate">
-                    {view.sprintName ? `${view.sprintName} · ` : ""}
-                    {view.period} ({view.filter.from} — {view.filter.to})
-                  </div>
+                </SheetTitle>
+                <SheetDescription className="sr-only">
+                  {r.person} ажилтны ажлын дэлгэрэнгүй үзүүлэлт болон даалгаврын жагсаалт
+                </SheetDescription>
+                <div className="pt-2">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="w-full gap-2 text-xs"
+                    onClick={() => setDownloadOpen(true)}
+                  >
+                    <FileSpreadsheet className="size-4" />
+                    «{r.person}» KPI Excel тайлан татах (.xlsx)
+                  </Button>
                 </div>
-              </SheetTitle>
-              <SheetDescription className="sr-only">
-                {r.person} ажилтны ажлын дэлгэрэнгүй үзүүлэлт болон даалгаврын жагсаалт
-              </SheetDescription>
-              <div className="pt-2">
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="w-full gap-2 text-xs"
-                  onClick={() => {
-                    window.location.href = `/api/export-kpi?person=${encodeURIComponent(r.person)}&quarter=${view.period}`;
-                  }}
-                >
-                  <FileSpreadsheet className="size-4" />
-                  «{r.person}» KPI Excel тайлан татах (.xlsx)
-                </Button>
-              </div>
-            </SheetHeader>
+              </SheetHeader>
             <div className="space-y-5 px-6 py-5">
               <div className="flex items-center justify-between rounded-lg border p-4">
                 <div>
@@ -186,6 +188,14 @@ export function PersonSheet({
         )}
       </SheetContent>
     </Sheet>
+
+    <DownloadKpiDialog
+      open={downloadOpen}
+      person={r?.person ?? null}
+      period={view.period}
+      onClose={() => setDownloadOpen(false)}
+    />
+  </>
   );
 }
 

@@ -9,6 +9,7 @@ import { PeopleTable } from "@/components/people-table";
 import { BenchmarkSection } from "@/components/benchmark";
 import { GradePill, Pill } from "@/components/pill";
 import { PersonSheet } from "@/components/person-sheet";
+import { DownloadKpiDialog } from "@/components/download-kpi-dialog";
 import type { View } from "@/lib/data";
 import { GRADES, gradeOf, type PersonResult } from "@/lib/metrics";
 import { num, pct, tone } from "@/lib/format";
@@ -16,6 +17,7 @@ import { num, pct, tone } from "@/lib/format";
 export function DashboardView({ view }: { view: View }) {
   const [tab, setTab] = useState<"overview" | "benchmark">("overview");
   const [selectedPerson, setSelectedPerson] = useState<PersonResult | null>(null);
+  const [downloadPerson, setDownloadPerson] = useState<string | null>(null);
 
   const T = view.totals;
   const sm = !!view.sprintName;
@@ -60,7 +62,7 @@ export function DashboardView({ view }: { view: View }) {
               size="sm"
               className="gap-2 text-xs"
               onClick={() => {
-                window.location.href = `/api/export-kpi?person=${encodeURIComponent(view.results[0].person)}&quarter=${view.period}`;
+                setDownloadPerson(view.results[0].person);
               }}
             >
               <FileSpreadsheet className="size-3.5 text-primary" />
@@ -148,6 +150,13 @@ export function DashboardView({ view }: { view: View }) {
       )}
 
       <PersonSheet view={view} result={selectedPerson} onClose={() => setSelectedPerson(null)} />
+
+      <DownloadKpiDialog
+        open={!!downloadPerson}
+        person={downloadPerson}
+        period={view.period}
+        onClose={() => setDownloadPerson(null)}
+      />
     </div>
   );
 }

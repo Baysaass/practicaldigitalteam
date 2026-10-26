@@ -8,12 +8,14 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, GradePill, Pill } from "@/components/pill";
 import { PersonSheet } from "@/components/person-sheet";
+import { DownloadKpiDialog } from "@/components/download-kpi-dialog";
 import type { View } from "@/lib/data";
 import { METRICS, QUAL, type PersonResult, type Weights } from "@/lib/metrics";
 import { num, pct, tone } from "@/lib/format";
 
 export function Evaluation({ view }: { view: View }) {
   const [open, setOpen] = useState<PersonResult | null>(null);
+  const [downloadTarget, setDownloadTarget] = useState<string | null>(null);
   const ranked = [...view.results].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
 
   return (
@@ -49,7 +51,7 @@ export function Evaluation({ view }: { view: View }) {
               onClick={() => {
                 const target = ranked[0]?.person;
                 if (target) {
-                  window.location.href = `/api/export-kpi?person=${encodeURIComponent(target)}&quarter=${view.period}`;
+                  setDownloadTarget(target);
                 }
               }}
             >
@@ -112,7 +114,7 @@ export function Evaluation({ view }: { view: View }) {
                         size="sm"
                         className="h-8 gap-1.5 text-xs font-normal"
                         onClick={() => {
-                          window.location.href = `/api/export-kpi?person=${encodeURIComponent(r.person)}&quarter=${view.period}`;
+                          setDownloadTarget(r.person);
                         }}
                       >
                         <Download className="size-3.5" />
@@ -134,6 +136,13 @@ export function Evaluation({ view }: { view: View }) {
       <ReadOnlyWeights weights={view.weights} />
 
       <PersonSheet view={view} result={open} onClose={() => setOpen(null)} />
+
+      <DownloadKpiDialog
+        open={!!downloadTarget}
+        person={downloadTarget}
+        period={view.period}
+        onClose={() => setDownloadTarget(null)}
+      />
     </div>
   );
 }

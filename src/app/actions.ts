@@ -7,6 +7,7 @@ import { managerRatings, settings } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { DEFAULT_WEIGHTS, METRICS, QUAL, type Weights } from "@/lib/metrics";
 import { runSync } from "@/lib/sync";
+import { generateDefaultKpiPassword } from "@/lib/kpi-password";
 
 export async function getZakiPin(): Promise<string> {
   try {
@@ -129,7 +130,75 @@ export type KpiProfileInput = {
   lateMinutes?: number;
   absentDays?: number;
   vacationDays?: number;
+  kpiPassword?: string;
 };
+
+/** Get person's individual download password (or deterministic default). */
+export async function getPersonKpiPassword(person: string): Promise<string> {
+  try {
+    const db = await getDb();
+    const [row] = await db.select().from(settings).where(eq(settings.key, "kpi_passwords"));
+    const passwords = (row?.value as Record<string, string>) || {};
+    if (passwords[person] && typeof passwords[person] === "string" && passwords[person].trim().length > 0) {
+      return passwords[person].trim();
+    }
+  } catch (e) {
+    console.error("Failed to fetch kpi_passwords:", e);
+  }
+  return generateDefaultKpiPassword(person);
+}
+
+/** Get all KPI passwords map (for Zaki admin view). */
+export async function getAllPersonKpiPasswords(): Promise<Record<string, string>> {
+  const isAuth = await isZakiAuthorized();
+  if (!isAuth) throw new Error("Удирдлагын эрх шаардлагатай");
+
+  const db = await getDb();
+  const [row] = await db.select().from(settings).where(eq(settings.key, "kpi_passwords"));
+  return (row?.value as Record<string, string>) || {};
+}
+
+/** Set custom KPI password for a person. */
+export async function setPersonKpiPassword(person: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
+  const isAuth = await isZakiAuthorized();
+  if (!isAuth) throw new Error("Удирдлагын эрх шаардлагатай");
+  if (!person) throw new Error("Ажилтны нэр оруулаагүй байна");
+  if (!newPassword || newPassword.trim().length < 2) {
+    return { ok: false, error: "Нууц үг хамгийн багадаа 2 тэмдэгттэй байх ёстой." };
+  }
+
+  const db = await getDb();
+  const [row] = await db.select().from(settings).where(eq(settings.key, "kpi_passwords"));
+  const passwords = (row?.value as Record<string, string>) || {};
+  passwords[person] = newPassword.trim();
+
+  await db
+    .insert(settings)
+    .values({ key: "kpi_passwords", value: passwords, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { value: passwords, updatedAt: new Date() },
+    });
+
+  refresh();
+  return { ok: true };
+}
+
+/** Verify if the provided password matches the person's password or Zaki PIN. */
+export async function verifyPersonKpiPassword(person: string, attempt: string): Promise<boolean> {
+  if (!person || !attempt) return false;
+  const cleanAttempt = attempt.trim();
+
+  // 1. Check person's individual password
+  const expectedPassword = await getPersonKpiPassword(person);
+  if (cleanAttempt === expectedPassword) return true;
+
+  // 2. Allow Zaki admin master PIN
+  const zakiPin = await getZakiPin();
+  if (cleanAttempt === zakiPin.trim()) return true;
+
+  return false;
+}
 
 export async function saveKpiProfile(person: string, period: string, data: KpiProfileInput) {
   if (!person || !/^\d{4}-Q[1-4]$/.test(period)) throw new Error("Буруу ажилтан эсвэл улирал");
@@ -179,6 +248,20 @@ export async function saveKpiProfile(person: string, period: string, data: KpiPr
         target: settings.key,
         set: { value: currentProfiles, updatedAt: new Date() },
       });
+
+    // If a custom KPI password was provided, update kpi_passwords
+    if (data.kpiPassword && data.kpiPassword.trim().length > 0) {
+      const [pwRow] = await db.select().from(settings).where(eq(settings.key, "kpi_passwords"));
+      const pwMap = (pwRow?.value as Record<string, string>) || {};
+      pwMap[person] = data.kpiPassword.trim();
+      await db
+        .insert(settings)
+        .values({ key: "kpi_passwords", value: pwMap, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: settings.key,
+          set: { value: pwMap, updatedAt: new Date() },
+        });
+    }
   } catch (err) {
     console.error("Failed to update persistent person_profiles:", err);
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Download, Lock, LockOpen, RefreshCw, ShieldCheck, Sparkles, Check, AlertCircle, FileSpreadsheet, Edit3, KeyRound } from "lucide-react";
+import { Download, Lock, LockOpen, RefreshCw, ShieldCheck, Sparkles, Check, AlertCircle, FileSpreadsheet, Edit3, KeyRound, Copy, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, GradePill, Pill } from "@/components/pill";
-import { clearZakiPin, saveKpiProfile, saveRating, saveWeights, syncNow, verifyZakiPin, updateZakiPin, setPersonStatus, removePerson, restorePerson, type KpiProfileInput } from "@/app/actions";
+import { clearZakiPin, saveKpiProfile, saveRating, saveWeights, syncNow, verifyZakiPin, updateZakiPin, setPersonStatus, removePerson, restorePerson, getAllPersonKpiPasswords, type KpiProfileInput } from "@/app/actions";
+import { generateDefaultKpiPassword } from "@/lib/kpi-password";
 import type { View } from "@/lib/data";
 import { METRICS, QUAL, type Weights } from "@/lib/metrics";
 
@@ -377,6 +378,12 @@ function SyncButtonAdmin() {
 function KpiProfilesSection({ view }: { view: View }) {
   const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [pwMap, setPwMap] = useState<Record<string, string>>({});
+  const [showPw, setShowPw] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    getAllPersonKpiPasswords().then(setPwMap).catch(console.error);
+  }, []);
 
   const selectedRating = selectedPerson ? view.ratings[selectedPerson] : null;
 
@@ -437,6 +444,7 @@ function KpiProfilesSection({ view }: { view: View }) {
                   <TableHead className="text-center">Ирц (Хоцролт / Таслалт / Амралт)</TableHead>
                   <TableHead className="text-center">Төлөв (Active)</TableHead>
                   <TableHead className="text-center">KPI талбар</TableHead>
+                  <TableHead className="text-center">KPI Нууц үг</TableHead>
                   <TableHead className="w-56 text-right">Үйлдэл</TableHead>
                 </TableRow>
               </TableHeader>
@@ -485,6 +493,33 @@ function KpiProfilesSection({ view }: { view: View }) {
                         ) : (
                           <Pill tone="gray">Дефолт</Pill>
                         )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="inline-flex items-center gap-1 font-mono text-xs bg-muted/60 px-2 py-1 rounded">
+                          <span className="font-semibold text-foreground">
+                            {showPw[person] ? (pwMap[person] || generateDefaultKpiPassword(person)) : "••••"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowPw((prev) => ({ ...prev, [person]: !prev[person] }))}
+                            className="text-muted-foreground hover:text-foreground cursor-pointer p-0.5"
+                            title={showPw[person] ? "Нуух" : "Харах"}
+                          >
+                            {showPw[person] ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const val = pwMap[person] || generateDefaultKpiPassword(person);
+                              navigator.clipboard.writeText(val);
+                              toast.success(`${person}: Нууц үг хуулагдлаа (${val})`);
+                            }}
+                            className="text-muted-foreground hover:text-foreground cursor-pointer p-0.5"
+                            title="Хуулах"
+                          >
+                            <Copy className="size-3" />
+                          </button>
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1.5">
@@ -573,6 +608,8 @@ function KpiProfilesSection({ view }: { view: View }) {
         person={selectedPerson}
         period={view.period}
         initialData={selectedRating}
+        initialPassword={selectedPerson ? (pwMap[selectedPerson] || generateDefaultKpiPassword(selectedPerson)) : ""}
+        onPasswordSaved={(p, newPw) => setPwMap((prev) => ({ ...prev, [p]: newPw }))}
         onClose={() => setSelectedPerson(null)}
       />
     </>
@@ -583,11 +620,15 @@ function KpiProfileEditSheet({
   person,
   period,
   initialData,
+  initialPassword,
+  onPasswordSaved,
   onClose,
 }: {
   person: string | null;
   period: string;
   initialData?: View["ratings"][string] | null;
+  initialPassword?: string;
+  onPasswordSaved?: (person: string, newPw: string) => void;
   onClose: () => void;
 }) {
   const [formData, setFormData] = useState<KpiProfileInput>({
@@ -604,6 +645,7 @@ function KpiProfileEditSheet({
     lateMinutes: 0,
     absentDays: 0,
     vacationDays: 0,
+    kpiPassword: "",
   });
 
   useEffect(() => {
@@ -622,9 +664,10 @@ function KpiProfileEditSheet({
         lateMinutes: initialData?.lateMinutes ?? 0,
         absentDays: initialData?.absentDays ?? 0,
         vacationDays: initialData?.vacationDays ?? 0,
+        kpiPassword: initialPassword || generateDefaultKpiPassword(person),
       });
     }
-  }, [person, initialData]);
+  }, [person, initialData, initialPassword]);
 
   const [pending, start] = useTransition();
 
@@ -633,6 +676,9 @@ function KpiProfileEditSheet({
     start(async () => {
       try {
         await saveKpiProfile(person, period, formData);
+        if (formData.kpiPassword) {
+          onPasswordSaved?.(person, formData.kpiPassword);
+        }
         toast.success(`${person}: KPI тайлангийн талбарууд амжилттай хадгалагдлаа`);
         onClose();
       } catch (e) {
@@ -785,6 +831,37 @@ function KpiProfileEditSheet({
                     onChange={(e) => setFormData({ ...formData, vacationDays: Number(e.target.value) })}
                   />
                 </label>
+              </div>
+
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-primary flex items-center gap-1.5">
+                    <Lock className="size-3.5" />
+                    KPI Excel татах нууц үг (Password / PIN)
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-[11px] px-2 bg-background hover:bg-muted"
+                    onClick={() => {
+                      const randomPin = String(Math.floor(1000 + Math.random() * 9000));
+                      setFormData({ ...formData, kpiPassword: randomPin });
+                    }}
+                  >
+                    <RefreshCw className="size-3" />
+                    Шинэ PIN үүсгэх
+                  </Button>
+                </div>
+                <Input
+                  placeholder="Жишээ: 4821 эсвэл baysaa2026"
+                  value={formData.kpiPassword ?? ""}
+                  onChange={(e) => setFormData({ ...formData, kpiPassword: e.target.value })}
+                  className="h-9 font-mono bg-background tracking-wider"
+                />
+                <span className="text-[11px] text-muted-foreground leading-normal">
+                  💡 Энэ ажилтан зөвхөн энэ нууц үгээ оруулж өөрийн KPI Excel тайлангаа татах боломжтой болно.
+                </span>
               </div>
 
               <div className="flex items-center justify-between gap-3 pt-4 border-t">

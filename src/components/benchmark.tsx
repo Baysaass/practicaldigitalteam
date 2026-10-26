@@ -5,6 +5,7 @@ import { Award, CheckCircle2, ChevronRight, Clock, Download, FileSpreadsheet, Ga
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, GradePill, Pill } from "@/components/pill";
+import { DownloadKpiDialog } from "@/components/download-kpi-dialog";
 import type { View } from "@/lib/data";
 import type { PersonResult } from "@/lib/metrics";
 import { num, pct, tone } from "@/lib/format";
@@ -20,6 +21,7 @@ export function BenchmarkSection({
   const ranked = [...view.results].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
   const [compareA, setCompareA] = useState<string>(ranked[0]?.person || "");
   const [compareB, setCompareB] = useState<string>(ranked[1]?.person || (b ? "team" : ""));
+  const [downloadPerson, setDownloadPerson] = useState<string | null>(null);
 
   const personA = ranked.find((r) => r.person === compareA);
   const personB = ranked.find((r) => r.person === compareB);
@@ -85,7 +87,7 @@ export function BenchmarkSection({
               size="sm"
               onClick={() => {
                 if (ranked[0]) {
-                  window.location.href = `/api/export-kpi?person=${encodeURIComponent(ranked[0].person)}&quarter=${view.period}`;
+                  setDownloadPerson(ranked[0].person);
                 }
               }}
             >
@@ -181,7 +183,7 @@ export function BenchmarkSection({
                           size="sm"
                           className="h-8 gap-1.5 text-xs font-normal"
                           onClick={() => {
-                            window.location.href = `/api/export-kpi?person=${encodeURIComponent(r.person)}&quarter=${view.period}`;
+                            setDownloadPerson(r.person);
                           }}
                         >
                           <Download className="size-3.5" />
@@ -267,7 +269,7 @@ export function BenchmarkSection({
                   size="sm"
                   className="mt-4 w-full text-xs"
                   onClick={() => {
-                    window.location.href = `/api/export-kpi?person=${encodeURIComponent(personA.person)}&quarter=${view.period}`;
+                    setDownloadPerson(personA.person);
                   }}
                 >
                   <Download className="mr-1.5 size-3.5" />
@@ -325,7 +327,7 @@ export function BenchmarkSection({
                   size="sm"
                   className="mt-4 w-full text-xs"
                   onClick={() => {
-                    window.location.href = `/api/export-kpi?person=${encodeURIComponent(personB.person)}&quarter=${view.period}`;
+                    setDownloadPerson(personB.person);
                   }}
                 >
                   <Download className="mr-1.5 size-3.5" />
@@ -336,6 +338,12 @@ export function BenchmarkSection({
           )}
         </CardContent>
       </Card>
+      <DownloadKpiDialog
+        open={!!downloadPerson}
+        person={downloadPerson}
+        period={view.period}
+        onClose={() => setDownloadPerson(null)}
+      />
     </div>
   );
 }

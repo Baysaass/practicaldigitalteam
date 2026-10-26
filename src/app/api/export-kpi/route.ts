@@ -8,6 +8,7 @@ import { issues, managerRatings, sprints, issueSprints, settings } from "@/db/sc
 import { eq, and } from "drizzle-orm";
 import { dayKey, quarterOf, startOfDay, endOfDay } from "@/lib/time";
 import { generateKpiAiContent, type TaskForAi } from "@/lib/ai-kpi";
+import { isZakiAuthorized, verifyPersonKpiPassword } from "@/app/actions";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -15,11 +16,22 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const person = searchParams.get("person");
     const quarterParam = searchParams.get("quarter");
+    const passwordParam = searchParams.get("password")?.trim();
     const fromParam = searchParams.get("from");
     const toParam = searchParams.get("to");
 
     if (!person) {
       return new NextResponse("Ажилтны нэр сонгогдоогүй байна.", { status: 400 });
+    }
+
+    const isAuthZaki = await isZakiAuthorized();
+    const isPwValid = passwordParam ? await verifyPersonKpiPassword(person, passwordParam) : false;
+
+    if (!isAuthZaki && !isPwValid) {
+      return new NextResponse(
+        "Нууц үг буруу эсвэл оруулаагүй байна. Тухайн ажилтны хувийн нууц үгийг оруулж татна уу.",
+        { status: 401 }
+      );
     }
 
     const now = new Date();
