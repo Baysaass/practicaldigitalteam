@@ -5,10 +5,12 @@ import fs from "fs";
 import ExcelJS from "exceljs";
 import { getDb } from "@/db";
 import { issues, managerRatings, sprints, issueSprints, settings } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, ilike } from "drizzle-orm";
 import { dayKey, quarterOf, startOfDay, endOfDay } from "@/lib/time";
 import { generateKpiAiContent, type TaskForAi } from "@/lib/ai-kpi";
 import { isZakiAuthorized, verifyPersonKpiPassword } from "@/app/actions";
+
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -68,7 +70,7 @@ export async function GET(req: NextRequest) {
 
     // Fetch tasks for this person along with sprint information
     const [allPersonIssues, allSprints, sprintLinks] = await Promise.all([
-      db.select().from(issues).where(eq(issues.assignee, person)),
+      db.select().from(issues).where(ilike(issues.assignee, person)),
       db.select().from(sprints),
       db.select().from(issueSprints),
     ]);
@@ -110,7 +112,7 @@ export async function GET(req: NextRequest) {
       db
         .select()
         .from(managerRatings)
-        .where(and(eq(managerRatings.person, person), eq(managerRatings.period, qLabel))),
+        .where(and(ilike(managerRatings.person, person), eq(managerRatings.period, qLabel))),
       db
         .select()
         .from(settings)

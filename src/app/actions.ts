@@ -142,6 +142,11 @@ export async function getPersonKpiPassword(person: string): Promise<string> {
     if (passwords[person] && typeof passwords[person] === "string" && passwords[person].trim().length > 0) {
       return passwords[person].trim();
     }
+    for (const [k, v] of Object.entries(passwords)) {
+      if (k.toLowerCase() === person.toLowerCase() && typeof v === "string" && v.trim().length > 0) {
+        return v.trim();
+      }
+    }
   } catch (e) {
     console.error("Failed to fetch kpi_passwords:", e);
   }

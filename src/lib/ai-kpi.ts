@@ -39,8 +39,8 @@ export type PersonProfileForAi = {
 };
 
 /**
- * Enhances KPI report rows and executive summary using OpenAI GPT-4o-mini.
- * Generates professional, clear, KPI-grade Mongolian descriptions customized to the person's Role and routine non-Jira duties.
+ * Enhances KPI report rows and executive summary using OpenAI o3 (with reasoning effort) or GPT-4o.
+ * Generates professional, clear, deep, KPI-grade Mongolian descriptions customized to the person's Role and routine non-Jira duties.
  */
 export async function generateKpiAiContent(
   person: string,
@@ -70,8 +70,8 @@ export async function generateKpiAiContent(
       .filter(Boolean)
       .map((duty) => ({
         title: duty,
-        roleDesc: `${personProfile.role || personProfile.jobTitle || "Хариуцсан чиглэл"}-ийн хүрээнд тогтмол хэрэгжүүлсэн үйл ажиллагаа`,
-        evidence: "Удирдлагын чиглэл болон өдөр тутмын үйл ажиллагааны дагуу тасралтгүй чанартай гүйцэтгэсэн",
+        roleDesc: `${personProfile.role || personProfile.jobTitle || "Хариуцсан чиглэл"}-ийн хүрээнд төлөвлөгөөт хуваарийн дагуу тасралтгүй хэрэгжүүлсэн үндсэн үйл ажиллагаа`,
+        evidence: "Өдөр тутмын үйл ажиллагаа болон удирдлагын чиглүүлгийн дагуу тасралтгүй чанартай гүйцэтгэж, тайлан мэдээллийн үнэн зөв байдлыг 100% хангасан",
       }));
   };
 
@@ -86,52 +86,70 @@ export async function generateKpiAiContent(
       type: t.type || "Task",
       status: t.status || (t.isDone ? "Done" : "In Progress"),
       parent: t.parentTitle || null,
-      desc: t.description ? t.description.slice(0, 200) : null,
-      notes: t.resolutionNotes ? t.resolutionNotes.slice(0, 150) : null,
+      desc: t.description ? t.description.slice(0, 300) : null,
+      notes: t.resolutionNotes ? t.resolutionNotes.slice(0, 200) : null,
       sp: t.storyPoints || null,
     }));
 
     const jobTitle = personProfile?.jobTitle || "Мэдээлэл технологийн мэргэжилтэн";
-    const role = personProfile?.role || "Системийн хөгжүүлэлт, API интеграци";
+    const role = personProfile?.role || "Системийн хөгжүүлэлт, төслийн удирдлага";
     const routine = personProfile?.routineTasks || "";
 
-    const prompt = `Та бол Монголын даатгал, санхүүгийн салбарын тэргүүлэгч байгууллагын Мэдээлэл Технологийн хэлтсийн хүний нөөц, гүйцэтгэлийн удирдлагын ахлах шинжээч юм.
+    const prompt = `Та бол Монголын санхүү, даатгал, технологийн салбарын тэргүүлэгч байгууллагын Мэдээлэл Технологийн хэлтсийн хүний нөөц, гүйцэтгэлийн удирдлагын ахлах шинжээч юм.
 
-Ажилтан: "${person}" (${personProfile?.fullName || person})
+Таны зорилго:
+Ажилтны албан ёсны KPI тайлан (Sheet 1 ба Sheet 2)-д орох тайлбар, нотолгоо, нэгдсэн дүгнэлтийг МАШ АНХААРАЛТАЙ, ОЙЛГОМЖТОЙ, ХАНГАЛТТАЙ ДЭЛГЭРЭНГҮЙ, БАТТАЙ НОТОЛГООТОЙ, мэргэжлийн өндөр түвшинд боловсруулах.
+Хэзээ ч "Ажлыг цагт нь хийсэн", "Системийг хэвийн ажиллуулсан" гэх мэт ерөнхий, өнгөц, хоосон үг хэрэглэж болохгүй! Даалгавар бүрийн бодит агуулга, технологийн/процессын шийдэл, үр дүнг нарийвчлан гаргана.
+
+---
+[АЖИЛТНЫ МЭДЭЭЛЭЛ]
+Нэр: "${person}" (${personProfile?.fullName || person})
 Албан тушаал: "${jobTitle}"
-Үндсэн чиглэл / Role: "${role}"
-${routine ? `Jira дээр бүртгэгддэггүй өдөр тутмын тогтмол үүргүүд: "${routine}"` : ""}
+Хариуцсан үндсэн чиглэл / Role: "${role}"
+${routine ? `Jira дээр бүртгэгддэггүй өдөр тутмын тогтмол үүргүүд:\n"${routine}"` : ""}
 Тайлант хугацаа: "${quarterLabel}"
-Нийт Jira даалгавар: ${summaryStats.total}, Үүнээс амжилттай дууссан: ${summaryStats.done} (${summaryStats.completionPct}%), Хугацаандаа: ${summaryStats.onTimePct}%
+Гүйцэтгэлийн статистик: Нийт ${summaryStats.total} даалгавраас ${summaryStats.done} амжилттай дууссан (${summaryStats.completionPct}%), хугацаандаа дууссан ${summaryStats.onTimePct}%.
 
-Энэхүү ажилтны албан тушаал, хариуцсан Role болон өдөр тутмын тогтмол үүрэгт нь ТУСГАЙЛАН ТОХИРУУЛЖ албан ёсны KPI тайлангийн дараах өгөгдлийг JSON хэлбэрээр гаргана уу:
+---
+[ШААРДЛАГУУД]
 
-1. taskResults (Array):
-   Jira даалгавар бүрт:
-   - "key": даалгаврын түлхүүр
-   - "roleDesc": Зорилттой холбоо / хариуцсан үүрэг (Ажилтны Role (${jobTitle}, ${role})-ийн үүднээс энэхүү ажлыг хэрхэн удирдаж, зохион байгуулж, гүйцэтгэснийг мэргэжлийн түвшинд 1-2 өгүүлбэрт багтааж бичнэ)
-   - "evidence": Тайлбар / нотолгоо (Ажил хэрхэн чанартай хийгдсэн, системийн найдвартай ажиллагаа, багт үзүүлсэн үр дүнг нотолсон тайлбар 1-2 өгүүлбэр)
+1. "taskResults" (Array):
+   Өгөгдсөн Jira даалгавар бүрт:
+   - "key": даалгаврын түлхүүр (жишээ: DEV-102)
+   - "roleDesc" (Зорилттой холбоо / хариуцсан үүрэг):
+     Ажилтны албан тушаал (${jobTitle}) болон чиглэл (${role})-тэй уялдуулан:
+     (1) Энэхүү даалгавар ямар зорилгоор, ямар техникийн эсвэл бизнесийн асуудлыг шийдэхээр хийгдсэн бэ?
+     (2) Ажилтан яг ямар бодит үүрэг гүйцэтгэсэн бэ (архитектур төлөвлөлт, API хөгжүүлэлт, UI шийдэл, өгөгдлийн бааз, алдаа засалт, төслийн зохицуулалт гэх мэт)?
+     (3) Байгууллагын/системийн зорилттой хэрхэн уялдав?
+     Үүнийг 2-3 бүтэн, тодорхой өгүүлбэрээр тайлбарлаж бичнэ.
+   - "evidence" (Тайлбар / нотолгоо):
+     Ажил хэрхэн чанартай, бүрэн хийгдсэнийг батлах бодит нотолгоо:
+     (1) Тестчлэгдсэн байдал, код ревью, production-д амжилттай байршсан, алдаагүй хэвийн ажиллаж буй байдал.
+     (2) Хэрэглэгч болон багийн бүтээмж, системийн найдвартай ажиллагаанд өгсөн бодит үр ашиг.
+     (3) Хэрэв Story Points (SP) үнэлгээтэй бол SP үнэ цэнийг тусгана.
+     Үүнийг 2-3 бүтэн, найдвартай өгүүлбэрээр бичнэ.
 
-2. routineTaskResults (Array):
+2. "routineTaskResults" (Array):
    ${
      routine
-       ? `Дээр дурдсан Jira-д бүртгэгддэггүй өдөр тутмын тогтмол ажлуудаар Sheet 2 (Ажлын жагсаалт)-д шууд оруулах 1-3 бие даасан ажил үүсгэнэ:
-       - "title": Ажлын албан нэр (Жишээ: "Төслийн явцын долоо хоног тутмын нэгдсэн тайлан (Weekly Report) бэлтгэж удирдлагад танилцуулах")
-       - "roleDesc": Зорилттой холбоо / хариуцсан үүрэг (Жишээ: "Төслийн менежерийн хувиар төслүүдийн явцыг нэгтгэн, эрсдэл болон гүйцэтгэлийг шуурхай тайлагнах")
-       - "evidence": Тайлбар / нотолгоо (Жишээ: "Долоо хоног бүр төслийн явцын тайланг тасралтгүй бэлтгэж, удирдлага болон багийг үнэн зөв мэдээллээр тогтмол хангасан")`
+       ? `Ажилтны бичсэн Jira дээр бүртгэгддэггүй өдөр тутмын тогтмол үүргүүдийг Sheet 2 (Ажлын жагсаалт)-д орох 1-3 бие даасан, дэлгэрэнгүй ажил болгон бүрэн задалж бичнэ:
+       - "title": Ажлын албан ёсны тодорхой нэр (Жишээ: "Төслийн явцын долоо хоног тутмын нэгдсэн тайлагналт ба эрсдэлийн шинжилгээ (Weekly Report)", "Өдөр тутмын орлогын дата шинэчлэлт, санхүүгийн мониторинг", "Мэдээлэл технологийн багийн ажил хуваарилалт, гүйцэтгэлийн өдөр тутмын хяналт")
+       - "roleDesc": Ажилтны уг чиглэлд хариуцан гүйцэтгэсэн өдөр тутмын үүрэг, процессын нарийвчлалыг 2-3 өгүүлбэрээр
+       - "evidence": Өдөр бүр / долоо хоног бүр тасралтгүй чанартай гүйцэтгэсэн, удирдлагыг үнэн зөв мэдээллээр хангасан, санхүү/төслийн зөрчилгүй найдвартай байдлыг нотолсон 2-3 өгүүлбэр`
        : `Хоосон массив [] байна.`
    }
 
-3. "goalsSummary" (Sheet 1 B9):
-   Тухайн улиралд ажилтны Role (${jobTitle}, ${role}) болон тогтмол ажлууд (${routine || "хөгжүүлэлтийн чиглэл"}), мөн Jira төслүүдийн хүрээнд дэвшүүлсэн зорилго, байгууллагад авчирсан үнэ цэнийн нэгдсэн дүгнэлт (2-3 цогц өгүүлбэр, албан ёсны KPI найруулгаар).
+3. "goalsSummary" (Sheet 1 B9 - Зорилтын биелэлт):
+   Тухайн улиралд ажилтны Role (${jobTitle}, ${role}) болон дэвшүүлсэн үндсэн зорилтууд, Jira төслүүд болон байнгын тогтмол үүргийн хүрээнд хийгдсэн ажлуудын зорилгын нэгдсэн тайлан. (3-4 цогц, уран найруулгатай, албан ёсны KPI өгүүлбэр).
 
-4. "resultsSummary" (Sheet 1 B19):
-   Тайлант хугацаанд гүйцэтгэсэн ажлуудын тоон болон чанарын үр дүнгийн нэгдсэн дүгнэлт (Долоо хоногийн тайлагналт, санхүү/орлого, төслийн удирдлага, багийн гүйцэтгэлд оруулсан бодит хувь нэмрийг тусгасан 2-3 цогц өгүүлбэр).
+4. "resultsSummary" (Sheet 1 B19 - Үр дүнгийн дүгнэлт):
+   Тайлант хугацаанд хүрсэн тоон (гүйцэтгэл ${summaryStats.completionPct}%, хугацаандаа ${summaryStats.onTimePct}%, дууссан даалгаврууд) болон чанарын үр дүн, системийн найдвартай байдал, төслийн менежмент/хөгжүүлэлтийн явцад оруулсан хувь нэмэр, байгууллагад авчирсан үнэ цэнийг нэгтгэн дүгнэсэн 3-4 цогц өгүүлбэр.
 
+---
 Даалгавруудын жагсаалт:
 ${JSON.stringify(taskPayload, null, 2)}
 
-Хариуг зөвхөн JSON хэлбэрээр өгнө үү:
+Хариуг зөвхөн дараах JSON бүтцээр буцаана уу:
 {
   "taskResults": [
     { "key": "DEV-...", "roleDesc": "...", "evidence": "..." }
@@ -143,35 +161,9 @@ ${JSON.stringify(taskPayload, null, 2)}
   "resultsSummary": "..."
 }`;
 
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "Та зөвхөн өгөгдсөн бүтцийн дагуу зөв JSON объект буцаадаг мэргэжлийн HR/KPI туслах.",
-          },
-          { role: "user", content: prompt },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.3,
-      }),
-    });
+    const parsed = await fetchAiKpiWithBestModel(apiKey, prompt);
 
-    if (!res.ok) {
-      console.warn("OpenAI API call failed with status", res.status);
-      return { tasksMap, routineTasks: getFallbackRoutineTasks(), executiveSummary: null };
-    }
-
-    const data = await res.json();
-    const parsed = JSON.parse(data.choices?.[0]?.message?.content || "{}");
-
-    if (Array.isArray(parsed.taskResults)) {
+    if (parsed && Array.isArray(parsed.taskResults)) {
       for (const item of parsed.taskResults) {
         if (item.key && item.roleDesc && item.evidence) {
           tasksMap.set(item.key, {
@@ -184,7 +176,7 @@ ${JSON.stringify(taskPayload, null, 2)}
     }
 
     const routineTasksList: AiRoutineTaskResult[] = [];
-    if (Array.isArray(parsed.routineTaskResults)) {
+    if (parsed && Array.isArray(parsed.routineTaskResults)) {
       for (const item of parsed.routineTaskResults) {
         if (item.title && item.roleDesc && item.evidence) {
           routineTasksList.push({
@@ -199,7 +191,7 @@ ${JSON.stringify(taskPayload, null, 2)}
     const finalRoutine = routineTasksList.length > 0 ? routineTasksList : getFallbackRoutineTasks();
 
     const executiveSummary: AiExecutiveSummary | null =
-      parsed.goalsSummary && parsed.resultsSummary
+      parsed?.goalsSummary && parsed?.resultsSummary
         ? {
             goalsSummary: parsed.goalsSummary,
             resultsSummary: parsed.resultsSummary,
@@ -211,4 +203,104 @@ ${JSON.stringify(taskPayload, null, 2)}
     console.error("Error generating AI KPI content:", err);
     return { tasksMap, routineTasks: getFallbackRoutineTasks(), executiveSummary: null };
   }
+}
+
+/**
+ * Invokes OpenAI with the highest reasoning effort model (o3 with reasoning_effort)
+ * and falls back seamlessly to GPT-4o if primary model fails.
+ */
+async function fetchAiKpiWithBestModel(
+  apiKey: string,
+  prompt: string
+): Promise<{
+  taskResults?: Array<{ key: string; roleDesc: string; evidence: string }>;
+  routineTaskResults?: Array<{ title: string; roleDesc: string; evidence: string }>;
+  goalsSummary?: string;
+  resultsSummary?: string;
+} | null> {
+  const primaryModel = process.env.OPENAI_KPI_MODEL || "o3";
+  const reasoningEffort = process.env.OPENAI_KPI_REASONING_EFFORT || "medium";
+
+  // 1. Try Primary High-Effort Reasoning Model (e.g. o3)
+  try {
+    const isReasoning = primaryModel.startsWith("o");
+    const payload: Record<string, unknown> = {
+      model: primaryModel,
+      messages: [
+        {
+          role: "system",
+          content: "Та бол Монголын санхүү, технологийн салбарын KPI, гүйцэтгэлийн удирдлагын мэргэшсэн ахлах шинжээч. Бүх тайлбар, нотолгоог маш тодорхой, ажил хэрэгч, үнэмшилтэй, өндөр чанартай монгол хэлээр JSON форматаар гаргана.",
+        },
+        { role: "user", content: prompt },
+      ],
+      response_format: { type: "json_object" },
+      max_completion_tokens: 6000,
+    };
+
+    if (isReasoning) {
+      payload.reasoning_effort = reasoningEffort;
+    } else {
+      payload.temperature = 0.3;
+    }
+
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const rawText = data.choices?.[0]?.message?.content;
+      if (rawText) {
+        return JSON.parse(rawText);
+      }
+    } else {
+      console.warn(`Primary model ${primaryModel} failed (${res.status}):`, await res.text());
+    }
+  } catch (err) {
+    console.warn(`Primary model ${primaryModel} exception:`, err);
+  }
+
+  // 2. Fallback to GPT-4o
+  try {
+    console.log("Falling back to gpt-4o for KPI generation...");
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "Та бол Монголын санхүү, технологийн салбарын KPI, гүйцэтгэлийн удирдлагын мэргэшсэн ахлах шинжээч. Бүх тайлбар, нотолгоог маш тодорхой, ажил хэрэгч, үнэмшилтэй, өндөр чанартай монгол хэлээр JSON форматаар гаргана.",
+          },
+          { role: "user", content: prompt },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+        max_tokens: 4000,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const rawText = data.choices?.[0]?.message?.content;
+      if (rawText) {
+        return JSON.parse(rawText);
+      }
+    } else {
+      console.error(`Fallback gpt-4o failed (${res.status}):`, await res.text());
+    }
+  } catch (err) {
+    console.error("Fallback gpt-4o exception:", err);
+  }
+
+  return null;
 }
