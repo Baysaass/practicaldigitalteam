@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import ExcelJS from "exceljs";
 import { getDb } from "@/db";
-import { issues, managerRatings } from "@/db/schema";
+import { issues, managerRatings, sprints, issueSprints } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { dayKey, quarterOf, startOfDay, endOfDay } from "@/lib/time";
 import { generateKpiAiContent, type TaskForAi } from "@/lib/ai-kpi";
@@ -54,18 +54,42 @@ export async function GET(req: NextRequest) {
 
     const db = await getDb();
 
-    // Fetch tasks for this person
-    const allPersonIssues = await db
-      .select()
-      .from(issues)
-      .where(eq(issues.assignee, person));
+    // Fetch tasks for this person along with sprint information
+    const [allPersonIssues, allSprints, sprintLinks] = await Promise.all([
+      db.select().from(issues).where(eq(issues.assignee, person)),
+      db.select().from(sprints),
+      db.select().from(issueSprints),
+    ]);
+
+    const sprintMap = new Map<number, (typeof allSprints)[0]>();
+    allSprints.forEach((s) => sprintMap.set(s.id, s));
+
+    const taskSprints = new Map<string, number[]>();
+    sprintLinks.forEach((l) => {
+      const arr = taskSprints.get(l.issueKey) ?? [];
+      arr.push(l.sprintId);
+      taskSprints.set(l.issueKey, arr);
+    });
+
+    const getTaskDue = (t: (typeof allPersonIssues)[0]): Date => {
+      if (t.dueAt) return t.dueAt;
+      const sids = taskSprints.get(t.key) ?? [];
+      let latest: Date | null = null;
+      for (const sid of sids) {
+        const sp = sprintMap.get(sid);
+        if (sp?.endDate && (!latest || sp.endDate > latest)) latest = sp.endDate;
+      }
+      if (latest) return new Date(latest.getTime() + 36 * 3600 * 1000);
+      return endDate;
+    };
 
     // Filter tasks belonging to this quarter window:
-    // Either resolved in range, or taken in range, or due in range
+    // Either resolved in range, or taken in range, or target due in range
     const quarterTasks = allPersonIssues.filter((t) => {
+      const targetDue = getTaskDue(t);
       const resolved = t.resolvedAt ? t.resolvedAt >= startDate && t.resolvedAt <= endDate : false;
       const taken = t.takenAt ? t.takenAt >= startDate && t.takenAt <= endDate : false;
-      const due = t.dueAt ? t.dueAt >= startDate && t.dueAt <= endDate : false;
+      const due = targetDue ? targetDue >= startDate && targetDue <= endDate : false;
       return resolved || taken || due;
     });
 
@@ -118,7 +142,7 @@ export async function GET(req: NextRequest) {
     let onTimeCount = 0;
     quarterTasks.forEach((t) => {
       const isDone = t.statusCategory === "done";
-      const due = t.dueAt || endDate;
+      const due = getTaskDue(t);
       if (isDone && (!t.resolvedAt || t.resolvedAt <= due)) {
         onTimeCount++;
       }
@@ -219,7 +243,8 @@ export async function GET(req: NextRequest) {
       const r = 6 + i;
       const isDone = t.statusCategory === "done";
       const startStr = t.startedAt ? dayKey(t.startedAt) : t.takenAt ? dayKey(t.takenAt) : "";
-      const dueStr = t.dueAt ? dayKey(t.dueAt) : dayKey(endDate);
+      const taskDue = getTaskDue(t);
+      const dueStr = taskDue ? dayKey(taskDue) : dayKey(endDate);
       const resStr = t.resolvedAt ? dayKey(t.resolvedAt) : isDone ? todayStr : "";
       const qualityScore = t.reopens === 0 ? 10 : t.reopens === 1 ? 8 : 6;
 

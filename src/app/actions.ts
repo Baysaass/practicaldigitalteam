@@ -4,11 +4,25 @@ import { cookies } from "next/headers";
 import { refresh } from "next/cache";
 import { getDb } from "@/db";
 import { managerRatings, settings } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { DEFAULT_WEIGHTS, METRICS, QUAL, type Weights } from "@/lib/metrics";
 import { runSync } from "@/lib/sync";
 
+export async function getZakiPin(): Promise<string> {
+  try {
+    const db = await getDb();
+    const [row] = await db.select().from(settings).where(eq(settings.key, "zaki_pin"));
+    if (row?.value && typeof (row.value as Record<string, unknown>).pin === "string") {
+      return (row.value as { pin: string }).pin;
+    }
+  } catch (e) {
+    // fallback
+  }
+  return process.env.ZAKI_PIN || "2026";
+}
+
 export async function verifyZakiPin(pin: string): Promise<{ ok: boolean; error?: string }> {
-  const expectedPin = process.env.ZAKI_PIN || "2026";
+  const expectedPin = await getZakiPin();
   if (pin.trim() === expectedPin.trim()) {
     const c = await cookies();
     c.set("zaki_token", "authorized", {
@@ -21,6 +35,25 @@ export async function verifyZakiPin(pin: string): Promise<{ ok: boolean; error?:
     return { ok: true };
   }
   return { ok: false, error: "PIN код буруу байна." };
+}
+
+export async function updateZakiPin(newPin: string): Promise<{ ok: boolean; error?: string }> {
+  if (!newPin || newPin.trim().length < 4) {
+    return { ok: false, error: "PIN код хамгийн багадаа 4 оронтой байх ёстой." };
+  }
+  const isAuth = await isZakiAuthorized();
+  if (!isAuth) return { ok: false, error: "Нэвтрэх эрх хүрэлцэхгүй байна." };
+
+  const db = await getDb();
+  await db
+    .insert(settings)
+    .values({ key: "zaki_pin", value: { pin: newPin.trim() }, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { value: { pin: newPin.trim() }, updatedAt: new Date() },
+    });
+
+  return { ok: true };
 }
 
 export async function clearZakiPin(): Promise<{ ok: boolean }> {

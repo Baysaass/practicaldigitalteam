@@ -152,7 +152,8 @@ export function PersonSheet({
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
                             {t.type && <span>Төрөл: {t.type}</span>}
                             {t.storyPoints != null && <span>SP: {t.storyPoints}</span>}
-                            {t.due && <span>Due: {t.due}</span>}
+                            {t.started && <span>Эхэлсэн: {t.started}</span>}
+                            {t.due && <span>Хугацаа: {t.due}</span>}
                             {t.resolved && <span className="text-emerald-600 dark:text-emerald-400">Дууссан: {t.resolved}</span>}
                             {t.reopens > 0 && <span className="text-amber-600 dark:text-amber-400">Дахин нээгдсэн: {t.reopens}</span>}
                           </div>

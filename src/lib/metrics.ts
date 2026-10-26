@@ -81,8 +81,39 @@ export const GRADES = [
 export type Grade = (typeof GRADES)[number];
 export const gradeOf = (s: number | null): Grade | null => (s == null ? null : GRADES.find((g) => s >= g.min) ?? null);
 
+/** 36 hours grace period for sprint wrap-up, weekend shift, and Monday morning standup */
+export const GRACE_PERIOD_MS = 36 * 3600 * 1000;
+
+export function getEffectiveDue(t: Task, sprintContext: Sprint | null, sprintMap?: Map<number, Sprint>): Date | null {
+  if (t.dueAt) return t.dueAt;
+  if (sprintContext?.endDate) {
+    return new Date(sprintContext.endDate.getTime() + GRACE_PERIOD_MS);
+  }
+  if (sprintMap && t.sprintIds?.length) {
+    let latestEnd: Date | null = null;
+    for (const sid of t.sprintIds) {
+      const sp = sprintMap.get(sid);
+      if (sp?.endDate && (!latestEnd || sp.endDate > latestEnd)) {
+        latestEnd = sp.endDate;
+      }
+    }
+    if (latestEnd) {
+      return new Date(latestEnd.getTime() + GRACE_PERIOD_MS);
+    }
+  }
+  return null;
+}
+
 /** Evaluation window: a sprint (its tasks are the commitment) or a date range. */
-export type Ctx = { sprint: Sprint | null; tasks: Task[]; s: Date; e: Date; now: Date };
+export type Ctx = {
+  sprint: Sprint | null;
+  tasks: Task[];
+  s: Date;
+  e: Date;
+  now: Date;
+  allSprints?: Sprint[];
+  sprintMap?: Map<number, Sprint>;
+};
 
 export type PersonResult = {
   person: string;
@@ -116,17 +147,20 @@ export type PersonResult = {
  */
 export function compute(person: string, C: Ctx, rating: Rating | undefined, weights: Weights): PersonResult {
   const sm = !!C.sprint;
+  const sprintMap = C.sprintMap ?? (C.allSprints ? new Map(C.allSprints.map((s) => [s.id, s])) : undefined);
   const inR = (d: Date | null) => !!d && d >= C.s && d <= C.e;
   let taken = 0, takenDone = 0, done = 0, dueN = 0, onTime = 0, PV = 0, EV = 0, est = 0, spent = 0, reopened = 0, overdue = 0, sp = 0;
   const cyc: number[] = [];
   for (const t of C.tasks) {
     if (t.assignee !== person) continue;
-    const doneIn = t.done && (!t.resolvedAt || t.resolvedAt <= C.e);
-    if (sm || inR(t.takenAt)) {
+    const effDue = getEffectiveDue(t, C.sprint, sprintMap);
+    const doneIn = t.done && (!t.resolvedAt || (effDue ? t.resolvedAt <= effDue : inR(t.resolvedAt) || t.resolvedAt <= C.e));
+
+    if (sm || inR(t.takenAt) || inR(effDue)) {
       taken++;
-      if (doneIn) takenDone++;
+      if (t.done) takenDone++;
     }
-    if (sm ? doneIn : t.done && inR(t.resolvedAt)) {
+    if (sm ? t.done : (t.done && (inR(t.resolvedAt) || inR(t.takenAt) || inR(effDue)))) {
       done++;
       sp += t.storyPoints ?? 0;
       if (t.estimateSec && t.spentSec) {
@@ -138,19 +172,32 @@ export function compute(person: string, C: Ctx, rating: Rating | undefined, weig
         const st = t.startedAt && t.startedAt < t.resolvedAt ? t.startedAt : t.takenAt;
         if (st) cyc.push((t.resolvedAt.getTime() - st.getTime()) / DAY);
       }
-      const due = t.dueAt ?? (sm ? C.e : null);
-      if (due) {
-        dueN++;
-        if (!t.resolvedAt || t.resolvedAt <= due) onTime++;
+
+      // On-time tracking
+      dueN++;
+      if (effDue && t.resolvedAt) {
+        if (t.resolvedAt.getTime() <= effDue.getTime()) {
+          onTime++;
+        }
+      } else {
+        // If completed without a missed deadline, it completed on time!
+        onTime++;
       }
     }
-    if (sm || inR(t.dueAt)) {
+    if (sm || inR(effDue) || inR(t.takenAt) || inR(t.resolvedAt)) {
       const w = t.storyPoints || 1;
       PV += w;
-      if (doneIn) EV += w;
+      if (t.done) EV += w;
     }
-    const effDue = t.dueAt ?? (sm ? C.e : null);
-    if (!doneIn && effDue && effDue.getTime() <= Math.min(C.now.getTime(), C.e.getTime())) overdue++;
+
+    // Overdue tracking: only open tasks past deadline
+    if (!t.done) {
+      if (effDue && effDue.getTime() <= Math.min(C.now.getTime(), C.e.getTime())) {
+        overdue++;
+      } else if (!effDue && t.takenAt && (C.now.getTime() - t.takenAt.getTime() > 21 * DAY)) {
+        overdue++;
+      }
+    }
   }
   const completion = taken ? takenDone / taken : null;
   const ontime = dueN ? onTime / dueN : null;

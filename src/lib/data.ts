@@ -13,10 +13,11 @@ import {
   type Weights,
   compute,
   dailySeries,
+  getEffectiveDue,
   peopleOf,
   sprintWindow,
 } from "./metrics";
-import { dayKey, endOfDay, isYmd, quarterOf, startOfDay } from "./time";
+import { DAY, dayKey, endOfDay, isYmd, quarterOf, startOfDay } from "./time";
 
 export type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -145,14 +146,15 @@ export async function buildView(sp: SearchParams) {
     quarter: qParam || null,
   };
 
+  const sprintMap = new Map<number, Sprint>(allSprints.map((s) => [s.id, s]));
   const sprintTasks = (s: Sprint) => tasks.filter((t) => t.sprintIds.includes(s.id));
   const ctxFor = (s: Sprint): Ctx => {
     const ts = sprintTasks(s);
     const w = sprintWindow(s, ts);
-    return { sprint: s, tasks: ts, s: w.s, e: w.e, now };
+    return { sprint: s, tasks: ts, s: w.s, e: w.e, now, allSprints, sprintMap };
   };
   const sprint = filter.sprintId != null ? allSprints.find((s) => s.id === filter.sprintId) ?? null : null;
-  const C: Ctx = sprint ? ctxFor(sprint) : { sprint: null, tasks, s: startOfDay(filter.from), e: endOfDay(filter.to), now };
+  const C: Ctx = sprint ? ctxFor(sprint) : { sprint: null, tasks, s: startOfDay(filter.from), e: endOfDay(filter.to), now, allSprints, sprintMap };
   if (sprint) {
     filter.from = dayKey(C.s);
     filter.to = dayKey(C.e);
@@ -193,21 +195,38 @@ export async function buildView(sp: SearchParams) {
   const details = Object.fromEntries(
     people.map((p) => {
       const mine = C.tasks
-        .filter((t) => t.assignee === p && (C.sprint || (t.takenAt && t.takenAt >= C.s && t.takenAt <= C.e) || (t.resolvedAt && t.resolvedAt >= C.s && t.resolvedAt <= C.e)))
+        .filter((t) => {
+          if (t.assignee !== p) return false;
+          if (C.sprint) return true;
+          const effDue = getEffectiveDue(t, null, sprintMap);
+          return (
+            (t.takenAt && t.takenAt >= C.s && t.takenAt <= C.e) ||
+            (t.resolvedAt && t.resolvedAt >= C.s && t.resolvedAt <= C.e) ||
+            (effDue && effDue >= C.s && effDue <= C.e)
+          );
+        })
         .sort((a, b) => (b.resolvedAt?.getTime() ?? b.takenAt?.getTime() ?? 0) - (a.resolvedAt?.getTime() ?? a.takenAt?.getTime() ?? 0))
-        .map<TaskLite>((t) => ({
-          key: t.key, summary: t.summary, status: t.status, done: t.done,
-          late: !t.done && !!t.dueAt && t.dueAt < now,
-          due: t.dueAt ? dayKey(t.dueAt) : null, resolved: t.resolvedAt ? dayKey(t.resolvedAt) : null,
-          started: t.startedAt ? dayKey(t.startedAt) : null,
-          storyPoints: t.storyPoints,
-          type: t.type,
-          reopens: t.reopens,
-          parentKey: t.parentKey,
-          parentSummary: t.parentSummary,
-          description: t.description,
-          resolutionNotes: t.resolutionNotes,
-        }));
+        .map<TaskLite>((t) => {
+          const effDue = getEffectiveDue(t, C.sprint, sprintMap);
+          const isLate = !t.done && ((effDue && effDue < now) || (!effDue && t.takenAt && now.getTime() - t.takenAt.getTime() > 21 * DAY));
+          return {
+            key: t.key,
+            summary: t.summary,
+            status: t.status,
+            done: t.done,
+            late: !!isLate,
+            due: effDue ? dayKey(effDue) : null,
+            resolved: t.resolvedAt ? dayKey(t.resolvedAt) : null,
+            started: t.startedAt ? dayKey(t.startedAt) : (t.takenAt ? dayKey(t.takenAt) : null),
+            storyPoints: t.storyPoints,
+            type: t.type,
+            reopens: t.reopens,
+            parentKey: t.parentKey,
+            parentSummary: t.parentSummary,
+            description: t.description,
+            resolutionNotes: t.resolutionNotes,
+          };
+        });
       const history = sprintCtxs
         .filter((c) => c.tasks.some((t) => t.assignee === p))
         .map((c) => ({ name: c.sprint!.name, score: compute(p, c, ratings[p], weights).score }));

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Download, Lock, LockOpen, RefreshCw, ShieldCheck, Sparkles, Check, AlertCircle, FileSpreadsheet, Edit3 } from "lucide-react";
+import { Download, Lock, LockOpen, RefreshCw, ShieldCheck, Sparkles, Check, AlertCircle, FileSpreadsheet, Edit3, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, GradePill, Pill } from "@/components/pill";
-import { clearZakiPin, saveKpiProfile, saveRating, saveWeights, syncNow, verifyZakiPin, type KpiProfileInput } from "@/app/actions";
+import { clearZakiPin, saveKpiProfile, saveRating, saveWeights, syncNow, verifyZakiPin, updateZakiPin, type KpiProfileInput } from "@/app/actions";
 import type { View } from "@/lib/data";
 import { METRICS, QUAL, type Weights } from "@/lib/metrics";
 
@@ -20,6 +20,7 @@ export function ZakiAdmin({ view, initialAuthorized }: { view: View; initialAuth
   const [authorized, setAuthorized] = useState(initialAuthorized);
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState("");
+  const [changePinOpen, setChangePinOpen] = useState(false);
   const [pending, start] = useTransition();
 
   const handleVerifyPin = (e?: React.FormEvent) => {
@@ -57,7 +58,7 @@ export function ZakiAdmin({ view, initialAuthorized }: { view: View; initialAuth
             </div>
             <CardTitle className="text-xl">Удирдлагын нэвтрэх хэсэг</CardTitle>
             <CardDescription>
-              Чанарын үнэлгээ өгөх, жин өөрчлөх эрх авахын тулд PIN кодыг оруулна уу. (Анхдагч PIN: 2026)
+              Чанарын үнэлгээ өгөх, жин тохируулах эрх авахын тулд удирдлагын нууц PIN кодыг оруулна уу.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -164,12 +165,18 @@ export function ZakiAdmin({ view, initialAuthorized }: { view: View; initialAuth
 
         <div className="flex items-center gap-2">
           <SyncButtonAdmin />
+          <Button variant="outline" size="sm" onClick={() => setChangePinOpen(true)}>
+            <KeyRound className="size-4" />
+            PIN код солих
+          </Button>
           <Button variant="outline" size="sm" onClick={handleLock}>
             <LockOpen className="size-4" />
             Түгжих
           </Button>
         </div>
       </div>
+
+      <ChangePinDialog open={changePinOpen} onClose={() => setChangePinOpen(false)} />
 
       {/* 1. Ratings Form Table */}
       <RatingsForm view={view} />
@@ -690,6 +697,102 @@ function KpiProfileEditSheet({
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function ChangePinDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [error, setError] = useState("");
+  const [isPending, startTransition] = useTransition();
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPin.trim().length < 4) {
+      setError("PIN код хамгийн багадаа 4 оронтой байх ёстой.");
+      return;
+    }
+    if (newPin.trim() !== confirmPin.trim()) {
+      setError("Шинэ PIN код болон давтан оруулсан код таарахгүй байна.");
+      return;
+    }
+    startTransition(async () => {
+      const res = await updateZakiPin(newPin.trim());
+      if (res.ok) {
+        toast.success("Удирдлагын PIN код амжилттай шинэчлэгдлээ!");
+        setNewPin("");
+        setConfirmPin("");
+        setError("");
+        onClose();
+      } else {
+        setError(res.error || "PIN код өөрчлөхөд алдаа гарлаа.");
+      }
+    });
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+      <Card className="w-full max-w-sm border-primary/20 shadow-2xl">
+        <CardHeader>
+          <div className="flex items-center gap-2 text-primary">
+            <KeyRound className="size-5" />
+            <CardTitle className="text-lg">Удирдлагын PIN код солих</CardTitle>
+          </div>
+          <CardDescription>
+            Цаашид удирдлагын хэсэгт нэвтрэх шинэ нууц кодоо оруулна уу.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSave} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">Шинэ PIN код (4-8 оронтой)</label>
+              <Input
+                type="password"
+                placeholder="Шинэ PIN"
+                className="h-10 text-center text-lg tracking-widest font-mono"
+                value={newPin}
+                maxLength={8}
+                autoFocus
+                onChange={(e) => {
+                  setNewPin(e.target.value);
+                  if (error) setError("");
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">Шинэ PIN давтах</label>
+              <Input
+                type="password"
+                placeholder="Шинэ PIN давтах"
+                className="h-10 text-center text-lg tracking-widest font-mono"
+                value={confirmPin}
+                maxLength={8}
+                onChange={(e) => {
+                  setConfirmPin(e.target.value);
+                  if (error) setError("");
+                }}
+              />
+            </div>
+            {error && (
+              <p className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400">
+                <AlertCircle className="size-3.5 shrink-0" />
+                {error}
+              </p>
+            )}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t">
+              <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={isPending}>
+                Цуцлах
+              </Button>
+              <Button type="submit" size="sm" loading={isPending} disabled={!newPin || !confirmPin}>
+                Хадгалах
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
