@@ -120,6 +120,7 @@ export type KpiProfileInput = {
   jobTitle?: string;
   department?: string;
   role?: string;
+  routineTasks?: string;
   manager?: string;
   training?: string;
   voluntary?: string;
@@ -138,6 +139,7 @@ export async function saveKpiProfile(person: string, period: string, data: KpiPr
     jobTitle: data.jobTitle?.trim() || null,
     department: data.department?.trim() || null,
     role: data.role?.trim() || null,
+    routineTasks: data.routineTasks?.trim() || null,
     manager: data.manager?.trim() || null,
     training: data.training?.trim() || null,
     voluntary: data.voluntary?.trim() || null,
@@ -148,6 +150,7 @@ export async function saveKpiProfile(person: string, period: string, data: KpiPr
     vacationDays: Number.isFinite(data.vacationDays) ? Number(data.vacationDays) : 0,
     updatedAt: new Date(),
   };
+
   await db
     .insert(managerRatings)
     .values({ person, period, ...patch })
@@ -155,6 +158,31 @@ export async function saveKpiProfile(person: string, period: string, data: KpiPr
       target: [managerRatings.person, managerRatings.period],
       set: patch,
     });
+
+  // Also update persistent person_profiles in settings so it applies to any future periods
+  try {
+    const [settingsRow] = await db.select().from(settings).where(eq(settings.key, "person_profiles"));
+    const currentProfiles = (settingsRow?.value as Record<string, Record<string, unknown>>) || {};
+    currentProfiles[person] = {
+      ...(currentProfiles[person] || {}),
+      fullName: patch.fullName,
+      jobTitle: patch.jobTitle,
+      department: patch.department,
+      role: patch.role,
+      routineTasks: patch.routineTasks,
+      manager: patch.manager,
+    };
+    await db
+      .insert(settings)
+      .values({ key: "person_profiles", value: currentProfiles, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: { value: currentProfiles, updatedAt: new Date() },
+      });
+  } catch (err) {
+    console.error("Failed to update persistent person_profiles:", err);
+  }
+
   refresh();
   return { ok: true };
 }

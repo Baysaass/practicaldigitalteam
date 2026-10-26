@@ -82,6 +82,7 @@ export const managerRatings = pgTable(
     jobTitle: text("job_title"),
     department: text("department"),
     role: text("role"),
+    routineTasks: text("routine_tasks"),
     manager: text("manager"),
     training: text("training"),
     voluntary: text("voluntary"),

@@ -421,7 +421,12 @@ function KpiProfilesSection({ view }: { view: View }) {
                       </TableCell>
                       <TableCell>
                         <div className="text-sm font-medium">{r?.jobTitle || "Мэдээлэл технологийн мэргэжилтэн"}</div>
-                        <div className="text-xs text-muted-foreground truncate max-w-xs">{r?.role || "Системийн хөгжүүлэлт, API интеграци"}</div>
+                        <div className="text-xs text-primary font-medium truncate max-w-xs">{r?.role || "Үүрэг тодорхойлоогүй"}</div>
+                        {r?.routineTasks && (
+                          <div className="text-[11px] text-muted-foreground truncate max-w-xs mt-0.5" title={r.routineTasks}>
+                            📋 {r.routineTasks}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {r?.department || "Мэдээлэл технологийн хэлтэс"}
@@ -495,6 +500,7 @@ function KpiProfileEditSheet({
     jobTitle: "",
     department: "",
     role: "",
+    routineTasks: "",
     manager: "",
     training: "",
     voluntary: "",
@@ -512,6 +518,7 @@ function KpiProfileEditSheet({
         jobTitle: initialData?.jobTitle ?? "",
         department: initialData?.department ?? "",
         role: initialData?.role ?? "",
+        routineTasks: initialData?.routineTasks ?? "",
         manager: initialData?.manager ?? "",
         training: initialData?.training ?? "",
         voluntary: initialData?.voluntary ?? "",
@@ -594,12 +601,25 @@ function KpiProfileEditSheet({
               </div>
 
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted-foreground">Хариуцсан үүрэг</span>
+                <span className="text-xs font-medium text-foreground">Хариуцсан үүрэг, Role (Тайлангийн үндсэн чиглэл)</span>
                 <Input
-                  placeholder="Жишээ: Системийн архитектур, API интеграци, өгөгдлийн сан хариуцсан"
+                  placeholder="Жишээ: Төслийн явцын удирдлага, системийн хөгжүүлэлтийн төлөвлөлт"
                   value={formData.role ?? ""}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                 />
+              </label>
+
+              <label className="flex flex-col gap-1.5 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                <span className="text-xs font-semibold text-primary">Jira дээр бүртгэгддэггүй өдөр тутмын тогтмол үүргүүд (Routine Duties)</span>
+                <Textarea
+                  rows={3}
+                  placeholder="Жишээ: Өглөө бүр төслийн weekly report бичдэг; Өдөр тутмын орлогын шинэчлэлт хийж бүртгэдэг; Багийн ажил хуваарилалт, гүйцэтгэлийг хянадаг..."
+                  value={formData.routineTasks ?? ""}
+                  onChange={(e) => setFormData({ ...formData, routineTasks: e.target.value })}
+                />
+                <span className="text-[11px] text-muted-foreground leading-normal">
+                  💡 Энд оруулсан тогтмол үүргүүд нь тухайн ажилтны KPI тайлангийн Sheet 1 (Зорилтын биелэлт ба Үр дүнгийн дүгнэлт)-д тусч, Sheet 2 (Ажлын жагсаалт)-д 100% гүйцэтгэлтэй даалгавар болж, AI-аар мэргэжлийн нотолгоо үүсгэгдэнэ.
+                </span>
               </label>
 
               <label className="flex flex-col gap-1">

@@ -29,31 +29,67 @@ export async function loadWeights(): Promise<Weights> {
 
 export async function loadRatings(period: string): Promise<Record<string, Rating>> {
   const db = await getDb();
-  const rows = await db.select().from(managerRatings).where(eq(managerRatings.period, period));
-  return Object.fromEntries(
-    rows.map((r) => [
-      r.person,
-      {
-        collab: r.collab,
-        comm: r.comm,
-        init: r.init,
-        resp: r.resp,
-        note: r.note,
-        fullName: r.fullName,
-        jobTitle: r.jobTitle,
-        department: r.department,
-        role: r.role,
-        manager: r.manager,
-        training: r.training,
-        voluntary: r.voluntary,
-        improvements: r.improvements,
-        conclusion: r.conclusion,
-        lateMinutes: r.lateMinutes,
-        absentDays: r.absentDays,
-        vacationDays: r.vacationDays,
-      },
-    ]),
-  );
+  const [rows, [settingsRow]] = await Promise.all([
+    db.select().from(managerRatings).where(eq(managerRatings.period, period)),
+    db.select().from(settings).where(eq(settings.key, "person_profiles")),
+  ]);
+
+  const defaultProfiles =
+    (settingsRow?.value as Record<string, Partial<Rating>>) ?? {};
+
+  const map: Record<string, Rating> = {};
+
+  for (const r of rows) {
+    const def = defaultProfiles[r.person] ?? {};
+    map[r.person] = {
+      collab: r.collab,
+      comm: r.comm,
+      init: r.init,
+      resp: r.resp,
+      note: r.note,
+      fullName: r.fullName || def.fullName || null,
+      jobTitle: r.jobTitle || def.jobTitle || null,
+      department: r.department || def.department || null,
+      role: r.role || def.role || null,
+      routineTasks: r.routineTasks || def.routineTasks || null,
+      manager: r.manager || def.manager || null,
+      training: r.training,
+      voluntary: r.voluntary,
+      improvements: r.improvements,
+      conclusion: r.conclusion,
+      lateMinutes: r.lateMinutes,
+      absentDays: r.absentDays,
+      vacationDays: r.vacationDays,
+    };
+  }
+
+  // Also include profiles for persons not yet rated in this period
+  for (const [person, def] of Object.entries(defaultProfiles)) {
+    if (!map[person]) {
+      map[person] = {
+        collab: null,
+        comm: null,
+        init: null,
+        resp: null,
+        note: null,
+        fullName: def.fullName || null,
+        jobTitle: def.jobTitle || null,
+        department: def.department || null,
+        role: def.role || null,
+        routineTasks: def.routineTasks || null,
+        manager: def.manager || null,
+        training: null,
+        voluntary: null,
+        improvements: null,
+        conclusion: null,
+        lateMinutes: 0,
+        absentDays: 0,
+        vacationDays: 0,
+      };
+    }
+  }
+
+  return map;
 }
 
 export async function lastSync(): Promise<typeof syncRuns.$inferSelect | null> {

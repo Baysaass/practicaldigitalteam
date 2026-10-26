@@ -40,6 +40,7 @@ export type Rating = {
   jobTitle?: string | null;
   department?: string | null;
   role?: string | null;
+  routineTasks?: string | null;
   manager?: string | null;
   training?: string | null;
   voluntary?: string | null;

@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import ExcelJS from "exceljs";
 import { getDb } from "@/db";
-import { issues, managerRatings, sprints, issueSprints } from "@/db/schema";
+import { issues, managerRatings, sprints, issueSprints, settings } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { dayKey, quarterOf, startOfDay, endOfDay } from "@/lib/time";
 import { generateKpiAiContent, type TaskForAi } from "@/lib/ai-kpi";
@@ -93,11 +93,30 @@ export async function GET(req: NextRequest) {
       return resolved || taken || due;
     });
 
-    // Also fetch manager ratings
-    const [rating] = await db
-      .select()
-      .from(managerRatings)
-      .where(and(eq(managerRatings.person, person), eq(managerRatings.period, qLabel)));
+    // Also fetch manager ratings and persistent profiles from settings
+    const [[rating], [settingsRow]] = await Promise.all([
+      db
+        .select()
+        .from(managerRatings)
+        .where(and(eq(managerRatings.person, person), eq(managerRatings.period, qLabel))),
+      db
+        .select()
+        .from(settings)
+        .where(eq(settings.key, "person_profiles")),
+    ]);
+
+    const defaultProfiles =
+      (settingsRow?.value as Record<string, Record<string, string>>) || {};
+    const defaultProfile = defaultProfiles[person] || {};
+
+    const profile = {
+      fullName: rating?.fullName || defaultProfile.fullName || person,
+      jobTitle: rating?.jobTitle || defaultProfile.jobTitle || "Мэдээлэл технологийн мэргэжилтэн",
+      department: rating?.department || defaultProfile.department || "Мэдээлэл технологийн хэлтэс",
+      role: rating?.role || defaultProfile.role || "Системийн хөгжүүлэлт, API интеграци хариуцсан",
+      routineTasks: rating?.routineTasks || defaultProfile.routineTasks || null,
+      manager: rating?.manager || defaultProfile.manager || "Удирдлага",
+    };
 
     // Locate template file
     const templateCandidates = [
@@ -124,14 +143,14 @@ export async function GET(req: NextRequest) {
     const todayStr = dayKey(now);
 
     // 1. Populate Sheet 1: 01_Нэгжийн_тайлан
-    ws1.getCell("B5").value = rating?.fullName || person;
+    ws1.getCell("B5").value = profile.fullName;
     ws1.getCell("D5").value = person;
-    ws1.getCell("F5").value = rating?.jobTitle || "Мэдээлэл технологийн мэргэжилтэн";
-    ws1.getCell("H5").value = rating?.role || "Системийн хөгжүүлэлт, API интеграци хариуцсан";
+    ws1.getCell("F5").value = profile.jobTitle;
+    ws1.getCell("H5").value = profile.role;
     ws1.getCell("B6").value = displayQuarter;
-    ws1.getCell("D6").value = rating?.department || "Мэдээлэл технологийн хэлтэс";
+    ws1.getCell("D6").value = profile.department;
     ws1.getCell("F6").value = todayStr;
-    ws1.getCell("H6").value = rating?.manager || "Удирдлага";
+    ws1.getCell("H6").value = profile.manager;
 
     // Build automated summaries for goals and work done
     const doneTasks = quarterTasks.filter((t) => t.statusCategory === "done");
@@ -171,7 +190,7 @@ export async function GET(req: NextRequest) {
     });
 
     const aiContent = await generateKpiAiContent(
-      rating?.fullName || person,
+      profile.fullName,
       displayQuarter,
       tasksForAi,
       {
@@ -179,7 +198,8 @@ export async function GET(req: NextRequest) {
         done: doneCount,
         completionPct,
         onTimePct,
-      }
+      },
+      profile
     );
 
     const formatTaskForSummary = (t: (typeof quarterTasks)[number]) => {
@@ -239,8 +259,27 @@ export async function GET(req: NextRequest) {
     ws1.getCell("H26").value = todayStr;
 
     // 2. Populate Sheet 2: 02_Ажлын_жагсаалт
-    quarterTasks.forEach((t, i) => {
-      const r = 6 + i;
+    let currentRow = 6;
+
+    // First: Populate routine non-Jira operational tasks (e.g. weekly reports, revenue updates)
+    if (aiContent.routineTasks && aiContent.routineTasks.length > 0) {
+      aiContent.routineTasks.forEach((item) => {
+        const r = currentRow++;
+        ws2.getCell(`B${r}`).value = `[Тогтмол үүрэг] ${item.title}`;
+        ws2.getCell(`C${r}`).value = item.roleDesc;
+        ws2.getCell(`D${r}`).value = "Дууссан";
+        ws2.getCell(`E${r}`).value = dayKey(startDate);
+        ws2.getCell(`F${r}`).value = dayKey(endDate);
+        ws2.getCell(`G${r}`).value = todayStr;
+        ws2.getCell(`I${r}`).value = 1.0;
+        ws2.getCell(`J${r}`).value = 10;
+        ws2.getCell(`K${r}`).value = item.evidence;
+      });
+    }
+
+    // Second: Populate all Jira tasks
+    quarterTasks.forEach((t) => {
+      const r = currentRow++;
       const isDone = t.statusCategory === "done";
       const startStr = t.startedAt ? dayKey(t.startedAt) : t.takenAt ? dayKey(t.takenAt) : "";
       const taskDue = getTaskDue(t);
