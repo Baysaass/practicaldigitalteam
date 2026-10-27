@@ -74,8 +74,18 @@ export function DashboardView({ view }: { view: View }) {
 
       {/* Top Level Metric KPIs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi icon={Inbox} label={sm ? "Sprint-д авсан" : "Авсан task"} value={T.taken} hint={sm ? view.sprintName! : `${view.results.length} ажилтан`} />
-        <Kpi icon={CheckCircle2} label="Хийсэн task" value={T.done} hint={`${Math.round(T.sp)} story point`} />
+        <Kpi
+          icon={Inbox}
+          label={sm ? "Sprint-д авсан" : "Авсан task"}
+          value={T.taken}
+          hint={T.mainTaken || T.subTaken ? `Үндсэн ${T.mainTaken} · Дэд ${T.subTaken}` : sm ? view.sprintName! : `${view.results.length} ажилтан`}
+        />
+        <Kpi
+          icon={CheckCircle2}
+          label="Хийсэн task"
+          value={T.done}
+          hint={T.mainDone || T.subDone ? `Үндсэн ${T.mainDone} · Дэд ${T.subDone} (${Math.round(T.sp)} SP)` : `${Math.round(T.sp)} story point`}
+        />
         <Kpi icon={Percent} label="Гүйцэтгэлийн хувь" value={pct(comp)} hint="Авснаас дууссан" cls={tone(comp, 0.85, 0.7)} />
         <Kpi icon={Clock} label="Хугацаандаа" value={pct(ont)} hint={sm ? "Due эсвэл sprint дуустал" : "Due date-д амжсан"} cls={tone(ont, 0.85, 0.7)} />
         <Kpi icon={Gauge} label="SPI" value={num(spi)} hint={`EV ${Math.round(T.EV)} ÷ PV ${Math.round(T.PV)}`} cls={tone(spi, 0.95, 0.8)} />

@@ -167,7 +167,16 @@ export async function GET(req: NextRequest) {
     ws1.getCell("H6").value = profile.manager;
 
     // Build automated summaries for goals and work done
+    const isSub = (t: (typeof quarterTasks)[number]) =>
+      !!t.parentKey || t.type?.toLowerCase() === "sub-task" || t.type?.toLowerCase() === "subtask" || !!t.parentSummary;
+
+    const mainTasks = quarterTasks.filter((t) => !isSub(t));
+    const subTasks = quarterTasks.filter((t) => isSub(t));
+
     const doneTasks = quarterTasks.filter((t) => t.statusCategory === "done");
+    const mainDoneTasks = mainTasks.filter((t) => t.statusCategory === "done");
+    const subDoneTasks = subTasks.filter((t) => t.statusCategory === "done");
+
     const doneCount = doneTasks.length;
     const totalCount = quarterTasks.length;
     const completionPct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 100;
@@ -183,12 +192,9 @@ export async function GET(req: NextRequest) {
 
     const onTimePct = totalCount > 0 ? Math.round((onTimeCount / totalCount) * 100) : 100;
 
-    const subtaskDone = doneTasks.filter((t) => !!t.parentKey || t.type?.toLowerCase() === "sub-task" || !!t.parentSummary);
-    const fullTaskDone = doneTasks.filter((t) => !(!!t.parentKey || t.type?.toLowerCase() === "sub-task" || !!t.parentSummary));
-
     // Prepare tasks payload and generate AI descriptions if OPENAI_API_KEY is available
     const tasksForAi: TaskForAi[] = quarterTasks.map((t) => {
-      const isSub = !!t.parentKey || t.type?.toLowerCase() === "sub-task" || !!t.parentSummary;
+      const isSubtask = isSub(t);
       const parentTitle = t.parentSummary || t.parentKey || "";
       return {
         key: t.key,
@@ -196,9 +202,10 @@ export async function GET(req: NextRequest) {
         type: t.type,
         status: t.status,
         isDone: t.statusCategory === "done",
+        isSub: isSubtask,
         description: t.description,
         resolutionNotes: t.resolutionNotes,
-        parentTitle: isSub ? parentTitle : null,
+        parentTitle: isSubtask ? parentTitle : null,
         storyPoints: t.storyPoints,
       };
     });
@@ -210,6 +217,10 @@ export async function GET(req: NextRequest) {
       {
         total: totalCount,
         done: doneCount,
+        mainTotal: mainTasks.length,
+        mainDone: mainDoneTasks.length,
+        subTotal: subTasks.length,
+        subDone: subDoneTasks.length,
         completionPct,
         onTimePct,
       },
@@ -217,29 +228,29 @@ export async function GET(req: NextRequest) {
     );
 
     const formatTaskForSummary = (t: (typeof quarterTasks)[number]) => {
-      const isSub = !!t.parentKey || t.type?.toLowerCase() === "sub-task" || !!t.parentSummary;
-      if (isSub) {
+      const isSubtask = isSub(t);
+      if (isSubtask) {
         const parent = t.parentSummary || t.parentKey || "Үндсэн төсөл";
-        return `• [Дэд ажил - ${parent}] ${t.key}: ${t.summary} (${t.storyPoints ? `${t.storyPoints} SP` : "Хийгдсэн"})`;
+        return `• [II зэрэглэл · Дэд ажил - ${parent}] ${t.key}: ${t.summary} (${t.storyPoints ? `${t.storyPoints} SP` : "Хийгдсэн"})`;
       }
-      return `• [Бүхлээр гүйцэтгэсэн] ${t.key}: ${t.summary} (${t.storyPoints ? `${t.storyPoints} SP` : "Хийгдсэн"})`;
+      return `• [I зэрэглэл · Үндсэн даалгавар] ${t.key}: ${t.summary} (${t.storyPoints ? `${t.storyPoints} SP` : "Хийгдсэн"})`;
     };
 
-    const taskHighlights = doneTasks
-      .slice(0, 15)
-      .map(formatTaskForSummary)
-      .join("\n");
+    const taskHighlights = [
+      ...mainDoneTasks.slice(0, 10).map(formatTaskForSummary),
+      ...subDoneTasks.slice(0, 5).map(formatTaskForSummary),
+    ].join("\n");
 
     if (aiContent.executiveSummary?.goalsSummary) {
       ws1.getCell("B9").value = `${aiContent.executiveSummary.goalsSummary}\n\nХэрэгжүүлсэн гол төсөл, ажлууд:\n${taskHighlights || "- Төлөвлөгөөт ажлуудыг хуваарийн дагуу бүрэн гүйцэтгэв."}`;
     } else {
-      ws1.getCell("B9").value = `${displayQuarter} улиралд мэдээллийн технологийн хөгжүүлэлт, системийн найдвартай ажиллагаа, төлөвлөгөөт болон дэд даалгавруудыг чанартай биелүүлэх зорилт тавин ажиллав.\n\nХэрэгжүүлсэн гол төсөл, ажлууд:\n${taskHighlights || "- Төлөвлөгөөт ажлуудыг хуваарийн дагуу бүрэн гүйцэтгэв."}`;
+      ws1.getCell("B9").value = `${displayQuarter} улиралд мэдээллийн технологийн хөгжүүлэлт, системийн найдвартай ажиллагаа, I зэрэглэлийн үндсэн болон II зэрэглэлийн дэд даалгавруудыг чанартай биелүүлэх зорилт тавин ажиллав.\n\nХэрэгжүүлсэн гол төсөл, ажлууд:\n${taskHighlights || "- Төлөвлөгөөт ажлуудыг хуваарийн дагуу бүрэн гүйцэтгэв."}`;
     }
 
     if (aiContent.executiveSummary?.resultsSummary) {
       ws1.getCell("B19").value = `${aiContent.executiveSummary.resultsSummary}\n\nДэлгэрэнгүй задаргааг '02_Ажлын_жагсаалт' хуудаснаас үзнэ үү.`;
     } else {
-      ws1.getCell("B19").value = `Тайлант хугацаанд нийт ${totalCount} даалгавраас ${doneCount} ажлыг (${completionPct}% биелэлттэй) амжилттай дуусгасан.\nҮүнд: ${fullTaskDone.length} үндсэн даалгаврыг бүхэлд нь бие даан, ${subtaskDone.length} дэд даалгаврыг тухайн төсөл, багийн ажилд хамрагдан гүйцэтгэсэн.\n\nДэлгэрэнгүй задаргааг '02_Ажлын_жагсаалт' хуудаснаас үзнэ үү.`;
+      ws1.getCell("B19").value = `Тайлант хугацаанд нийт ${totalCount} даалгавраас ${doneCount} ажлыг (${completionPct}% биелэлттэй) амжилттай дуусгасан.\nҮүнд:\n- I Зэрэглэл (Үндсэн даалгавар): Нийт ${mainTasks.length}-аас ${mainDoneTasks.length} ажлыг бие даан бүрэн гүйцэтгэсэн.\n- II Зэрэглэл (Дэд даалгавар): Нийт ${subTasks.length}-аас ${subDoneTasks.length} дэд ажлыг багийн төслийн хүрээнд гүйцэтгэсэн.\n\nДэлгэрэнгүй задаргааг '02_Ажлын_жагсаалт' хуудаснаас үзнэ үү.`;
     }
 
     // Training / Development / Social
@@ -291,8 +302,30 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Second: Populate all Jira tasks
-    quarterTasks.forEach((t) => {
+    // Second: Populate all Jira tasks organized by rank (I зэрэглэл - Үндсэн ажил, II зэрэглэл - Дэд ажил)
+    const sortedMainTasks = [...mainTasks].sort((a, b) => {
+      const aDone = a.statusCategory === "done" ? 0 : 1;
+      const bDone = b.statusCategory === "done" ? 0 : 1;
+      if (aDone !== bDone) return aDone - bDone;
+      const spDiff = (b.storyPoints ?? 0) - (a.storyPoints ?? 0);
+      if (spDiff !== 0) return spDiff;
+      return (b.resolvedAt?.getTime() ?? 0) - (a.resolvedAt?.getTime() ?? 0);
+    });
+
+    const sortedSubTasks = [...subTasks].sort((a, b) => {
+      const pA = a.parentSummary || a.parentKey || "";
+      const pB = b.parentSummary || b.parentKey || "";
+      const pDiff = pA.localeCompare(pB);
+      if (pDiff !== 0) return pDiff;
+      const aDone = a.statusCategory === "done" ? 0 : 1;
+      const bDone = b.statusCategory === "done" ? 0 : 1;
+      if (aDone !== bDone) return aDone - bDone;
+      return (b.resolvedAt?.getTime() ?? 0) - (a.resolvedAt?.getTime() ?? 0);
+    });
+
+    const orderedTasks = [...sortedMainTasks, ...sortedSubTasks];
+
+    orderedTasks.forEach((t) => {
       const r = currentRow++;
       const isDone = t.statusCategory === "done";
       const startStr = t.startedAt ? dayKey(t.startedAt) : t.takenAt ? dayKey(t.takenAt) : "";
@@ -301,15 +334,15 @@ export async function GET(req: NextRequest) {
       const resStr = t.resolvedAt ? dayKey(t.resolvedAt) : isDone ? todayStr : "";
       const qualityScore = t.reopens === 0 ? 10 : t.reopens === 1 ? 8 : 6;
 
-      const isSubtask = !!t.parentKey || t.type?.toLowerCase() === "sub-task" || !!t.parentSummary;
+      const isSubtask = isSub(t);
       const parentTitle = t.parentSummary || t.parentKey || "";
 
-      // Column B: Ажил / төслийн нэр (Show parent project name for subtasks)
+      // Column B: Ажил / төслийн нэр (Rank I vs Rank II clearly marked)
       let taskName = "";
       if (isSubtask) {
-        taskName = `[${parentTitle ? `${parentTitle} · ` : ""}${t.key}] ${t.summary}`;
+        taskName = `[II зэрэглэл · Дэд ажил · ${parentTitle ? `${parentTitle} · ` : ""}${t.key}] ${t.summary}`;
       } else {
-        taskName = `[${t.key}] ${t.summary}`;
+        taskName = `[I зэрэглэл · Үндсэн даалгавар · ${t.key}] ${t.summary}`;
       }
       ws2.getCell(`B${r}`).value = taskName;
 
@@ -320,13 +353,13 @@ export async function GET(req: NextRequest) {
       } else {
         let roleDesc = "";
         if (isSubtask) {
-          roleDesc = `Дэд даалгавар (Оролцсон): ${t.summary}`;
+          roleDesc = `II зэрэглэл · Дэд даалгавар (Оролцсон): ${t.summary}`;
           if (t.description) {
             const cleanDesc = t.description.replace(/\s+/g, " ").trim();
             roleDesc += ` — ${cleanDesc.slice(0, 140)}${cleanDesc.length > 140 ? "..." : ""}`;
           }
         } else {
-          roleDesc = `Бүхэлд нь хариуцан гүйцэтгэсэн (${t.type || "Үндсэн даалгавар"}): ${t.summary}`;
+          roleDesc = `I зэрэглэл · Үндсэн даалгавар (Бүхэлд нь хариуцан гүйцэтгэсэн): ${t.summary}`;
           if (t.description) {
             const cleanDesc = t.description.replace(/\s+/g, " ").trim();
             roleDesc += ` — ${cleanDesc.slice(0, 140)}${cleanDesc.length > 140 ? "..." : ""}`;
@@ -347,6 +380,7 @@ export async function GET(req: NextRequest) {
         ws2.getCell(`K${r}`).value = aiItem.evidence;
       } else {
         const notesParts: string[] = [];
+        notesParts.push(isSubtask ? "II зэрэглэл · Дэд ажил" : "I зэрэглэл · Үндсэн ажил");
         if (t.description) {
           const cleanDesc = t.description.replace(/\s+/g, " ").trim();
           notesParts.push(`Шаардлага: ${cleanDesc.slice(0, 180)}${cleanDesc.length > 180 ? "..." : ""}`);
@@ -364,21 +398,24 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    // Clear remaining demo rows up to row 100
-    for (let r = 6 + quarterTasks.length; r <= 100; r++) {
+    const totalPopulatedRows = currentRow - 1;
+
+    // Clear remaining demo rows up to row 150
+    for (let r = currentRow; r <= 150; r++) {
       ws2.getCell(`B${r}`).value = null;
       ws2.getCell(`C${r}`).value = null;
       ws2.getCell(`D${r}`).value = null;
       ws2.getCell(`E${r}`).value = null;
       ws2.getCell(`F${r}`).value = null;
       ws2.getCell(`G${r}`).value = null;
+      ws2.getCell(`H${r}`).value = null;
       ws2.getCell(`I${r}`).value = null;
       ws2.getCell(`J${r}`).value = null;
       ws2.getCell(`K${r}`).value = null;
     }
 
     // Precompute summary results in Sheet 1 while retaining formulas
-    const lastRow = Math.max(6, 5 + quarterTasks.length);
+    const lastRow = Math.max(6, totalPopulatedRows);
     ws1.getCell("C12").value = {
       formula: `IFERROR(AVERAGE('02_Ажлын_жагсаалт'!I6:I${lastRow}),0)`,
       result: totalCount > 0 ? doneCount / totalCount : 1,

@@ -14,6 +14,7 @@ import {
   compute,
   dailySeries,
   getEffectiveDue,
+  isSubtask,
   peopleOf,
   sprintWindow,
 } from "./metrics";
@@ -216,6 +217,7 @@ export async function buildView(sp: SearchParams) {
   const sum = (k: keyof PersonResult) => results.reduce((a, r) => a + ((r[k] as number) || 0), 0);
   const T = {
     taken: sum("taken"), done: sum("done"), takenDone: sum("takenDone"), dueN: sum("dueN"), onTime: sum("onTime"),
+    mainTaken: sum("mainTaken"), mainDone: sum("mainDone"), subTaken: sum("subTaken"), subDone: sum("subDone"),
     PV: sum("PV"), EV: sum("EV"), est: sum("est"), spent: sum("spent"), overdue: sum("overdue"), sp: sum("sp"),
   };
   const scored = results.filter((r) => r.score != null);
@@ -227,7 +229,7 @@ export async function buildView(sp: SearchParams) {
     avgTaken: people.length ? T.taken / people.length : 0,
     avgDone: people.length ? T.done / people.length : 0,
     avgSp: people.length ? T.sp / people.length : 0,
-    completion: T.taken ? T.takenDone / T.taken : null,
+    completion: T.PV ? T.EV / T.PV : (T.taken ? T.takenDone / T.taken : null),
     ontime: T.dueN ? T.onTime / T.dueN : null,
     spi: T.PV ? T.EV / T.PV : null,
     cpi: T.spent ? T.est / T.spent : null,
@@ -252,7 +254,12 @@ export async function buildView(sp: SearchParams) {
             (effDue && effDue >= C.s && effDue <= C.e)
           );
         })
-        .sort((a, b) => (b.resolvedAt?.getTime() ?? b.takenAt?.getTime() ?? 0) - (a.resolvedAt?.getTime() ?? a.takenAt?.getTime() ?? 0))
+        .sort((a, b) => {
+          const isSubA = isSubtask(a) ? 1 : 0;
+          const isSubB = isSubtask(b) ? 1 : 0;
+          if (isSubA !== isSubB) return isSubA - isSubB;
+          return (b.resolvedAt?.getTime() ?? b.takenAt?.getTime() ?? 0) - (a.resolvedAt?.getTime() ?? a.takenAt?.getTime() ?? 0);
+        })
         .map<TaskLite>((t) => {
           const effDue = getEffectiveDue(t, C.sprint, sprintMap);
           const isLate = !t.done && ((effDue && effDue < now) || (!effDue && t.takenAt && now.getTime() - t.takenAt.getTime() > 21 * DAY));

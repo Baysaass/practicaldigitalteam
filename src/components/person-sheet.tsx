@@ -80,8 +80,8 @@ export function PersonSheet({
                 <GradePill grade={r.grade} />
               </div>
               <div className="grid grid-cols-3 gap-2 text-center">
-                <Stat label="Авсан" value={r.taken} />
-                <Stat label="Хийсэн" value={r.done} />
+                <Stat label="Авсан" value={r.taken} sub={`Үндсэн ${r.mainTaken} · Дэд ${r.subTaken}`} />
+                <Stat label="Хийсэн" value={r.done} sub={`Үндсэн ${r.mainDone} · Дэд ${r.subDone}`} />
                 <Stat label="Хоцорсон" value={r.overdue} bad={r.overdue > 0} />
               </div>
               <div>
@@ -151,10 +151,14 @@ export function PersonSheet({
                             <span className="flex-1 truncate text-sm font-medium">{t.summary}</span>
                             <StatusPill status={t.status} done={t.done} late={t.late} />
                           </div>
-                          {isSubtask && (
+                          {isSubtask ? (
                             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                              <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-foreground/80">Дэд ажил</span>
-                              {parentTitle && <span className="truncate">Төсөл: {parentTitle}</span>}
+                              <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-foreground/80">II зэрэглэл · Дэд ажил</span>
+                              {parentTitle && <span className="truncate">Хамаарах төсөл: {parentTitle}</span>}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-[11px]">
+                              <span className="rounded bg-primary/10 text-primary px-1.5 py-0.5 font-medium">I зэрэглэл · Үндсэн ажил</span>
                             </div>
                           )}
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
@@ -199,11 +203,12 @@ export function PersonSheet({
   );
 }
 
-function Stat({ label, value, bad }: { label: string; value: number; bad?: boolean }) {
+function Stat({ label, value, sub, bad }: { label: string; value: number; sub?: string; bad?: boolean }) {
   return (
     <div className="rounded-lg border p-3">
       <div className="text-xs font-medium text-muted-foreground">{label}</div>
       <div className={cn("text-lg font-semibold tabular-nums", bad && "text-red-700 dark:text-red-400")}>{value}</div>
+      {sub && <div className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">{sub}</div>}
     </div>
   );
 }

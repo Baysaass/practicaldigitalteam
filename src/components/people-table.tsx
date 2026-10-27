@@ -39,8 +39,22 @@ export function PeopleTable({ view }: { view: View }) {
                     {isInactive && <Pill tone="orange">Идэвхгүй</Pill>}
                   </div>
                 </TableCell>
-              <TableCell className="text-right">{r.taken}</TableCell>
-              <TableCell className="text-right">{r.done}</TableCell>
+              <TableCell className="text-right">
+                <div className="font-medium">{r.taken}</div>
+                {(r.mainTaken > 0 || r.subTaken > 0) && (
+                  <div className="text-[11px] text-muted-foreground whitespace-nowrap">
+                    Үндсэн {r.mainTaken} · Дэд {r.subTaken}
+                  </div>
+                )}
+              </TableCell>
+              <TableCell className="text-right">
+                <div className="font-medium">{r.done}</div>
+                {(r.mainDone > 0 || r.subDone > 0) && (
+                  <div className="text-[11px] text-muted-foreground whitespace-nowrap">
+                    Үндсэн {r.mainDone} · Дэд {r.subDone}
+                  </div>
+                )}
+              </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
                   <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">

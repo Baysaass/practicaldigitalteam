@@ -83,6 +83,10 @@ export const GRADES = [
 export type Grade = (typeof GRADES)[number];
 export const gradeOf = (s: number | null): Grade | null => (s == null ? null : GRADES.find((g) => s >= g.min) ?? null);
 
+export function isSubtask(t: { parentKey?: string | null; type?: string | null; parentSummary?: string | null }): boolean {
+  return !!t.parentKey || t.type?.toLowerCase() === "sub-task" || t.type?.toLowerCase() === "subtask" || !!t.parentSummary;
+}
+
 /** 36 hours grace period for sprint wrap-up, weekend shift, and Monday morning standup */
 export const GRACE_PERIOD_MS = 36 * 3600 * 1000;
 
@@ -121,6 +125,10 @@ export type PersonResult = {
   person: string;
   taken: number;
   takenDone: number;
+  mainTaken: number;
+  mainDone: number;
+  subTaken: number;
+  subDone: number;
   done: number;
   dueN: number;
   onTime: number;
@@ -152,15 +160,29 @@ export function compute(person: string, C: Ctx, rating: Rating | undefined, weig
   const sprintMap = C.sprintMap ?? (C.allSprints ? new Map(C.allSprints.map((s) => [s.id, s])) : undefined);
   const inR = (d: Date | null) => !!d && d >= C.s && d <= C.e;
   let taken = 0, takenDone = 0, done = 0, dueN = 0, onTime = 0, PV = 0, EV = 0, est = 0, spent = 0, reopened = 0, overdue = 0, sp = 0;
+  let mainTaken = 0, mainDone = 0, subTaken = 0, subDone = 0;
   const cyc: number[] = [];
   for (const t of C.tasks) {
     if (t.assignee !== person) continue;
+    const isSub = isSubtask(t);
     const effDue = getEffectiveDue(t, C.sprint, sprintMap);
     const doneIn = t.done && (!t.resolvedAt || (effDue ? t.resolvedAt <= effDue : inR(t.resolvedAt) || t.resolvedAt <= C.e));
 
     if (sm || inR(t.takenAt) || inR(effDue)) {
       taken++;
-      if (t.done) takenDone++;
+      if (isSub) {
+        subTaken++;
+      } else {
+        mainTaken++;
+      }
+      if (t.done) {
+        takenDone++;
+        if (isSub) {
+          subDone++;
+        } else {
+          mainDone++;
+        }
+      }
     }
     if (sm ? t.done : (t.done && (inR(t.resolvedAt) || inR(t.takenAt) || inR(effDue)))) {
       done++;
@@ -187,7 +209,9 @@ export function compute(person: string, C: Ctx, rating: Rating | undefined, weig
       }
     }
     if (sm || inR(effDue) || inR(t.takenAt) || inR(t.resolvedAt)) {
-      const w = t.storyPoints || 1;
+      // Subtasks have default weight 0.5 (or explicit storyPoints); main tasks have default weight 1.0 (or explicit storyPoints)
+      const defaultWeight = isSub ? 0.5 : 1.0;
+      const w = t.storyPoints && t.storyPoints > 0 ? t.storyPoints : defaultWeight;
       PV += w;
       if (t.done) EV += w;
     }
@@ -201,7 +225,7 @@ export function compute(person: string, C: Ctx, rating: Rating | undefined, weig
       }
     }
   }
-  const completion = taken ? takenDone / taken : null;
+  const completion = PV ? Math.min(1, EV / PV) : (taken ? takenDone / taken : null);
   const ontime = dueN ? onTime / dueN : null;
   const spi = PV ? EV / PV : null;
   const cpi = spent ? est / spent : null;
@@ -227,7 +251,7 @@ export function compute(person: string, C: Ctx, rating: Rating | undefined, weig
     }
   }
   const score = tw ? tsum / tw : null;
-  return { person, taken, takenDone, done, dueN, onTime, PV, EV, est, spent, reopened, overdue, sp, completion, ontime, spi, cpi, quality, cycle, qualAvg, sc, score, grade: gradeOf(score) };
+  return { person, taken, takenDone, mainTaken, mainDone, subTaken, subDone, done, dueN, onTime, PV, EV, est, spent, reopened, overdue, sp, completion, ontime, spi, cpi, quality, cycle, qualAvg, sc, score, grade: gradeOf(score) };
 }
 
 export function peopleOf(tasks: Task[]): string[] {

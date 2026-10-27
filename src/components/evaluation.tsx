@@ -94,8 +94,22 @@ export function Evaluation({ view }: { view: View }) {
                         <span className="font-medium">{r.person}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">{r.taken}</TableCell>
-                    <TableCell className="text-right">{r.done}</TableCell>
+                    <TableCell className="text-right">
+                      <div>{r.taken}</div>
+                      {(r.mainTaken > 0 || r.subTaken > 0) && (
+                        <div className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          Үндсэн {r.mainTaken} · Дэд {r.subTaken}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div>{r.done}</div>
+                      {(r.mainDone > 0 || r.subDone > 0) && (
+                        <div className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          Үндсэн {r.mainDone} · Дэд {r.subDone}
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell className={`text-right ${tone(r.completion, 0.85, 0.7)}`}>{pct(r.completion)}</TableCell>
                     <TableCell className={`text-right ${tone(r.ontime, 0.85, 0.7)}`}>{pct(r.ontime)}</TableCell>
                     <TableCell className={`text-right ${tone(r.spi, 0.95, 0.8)}`}>{num(r.spi)}</TableCell>
