@@ -21,7 +21,7 @@ const jqlDate = (d: Date) => d.toISOString().slice(0, 16).replace("T", " ").repl
  * Pull issues updated since the last successful sync (first run: JIRA_INITIAL_DAYS) and upsert them.
  * Runs daily from Vercel Cron and on demand from the dashboard.
  */
-export async function runSync(trigger: "cron" | "manual") {
+export async function runSync(trigger: "cron" | "manual", full: boolean = false) {
   const db = await getDb();
   const cfg = jiraConfig();
   const [run] = await db.insert(syncRuns).values({ trigger, status: "running" }).returning();
@@ -32,7 +32,7 @@ export async function runSync(trigger: "cron" | "manual") {
       .where(eq(syncRuns.status, "ok"))
       .orderBy(desc(syncRuns.startedAt))
       .limit(1);
-    const since = prev?.startedAt ? new Date(prev.startedAt.getTime() - 86_400_000) : null;
+    const since = !full && prev?.startedAt ? new Date(prev.startedAt.getTime() - 86_400_000) : null;
     const jql = `(${cfg.jql}) AND updated >= ${since ? `"${jqlDate(since)}"` : `-${cfg.initialDays}d`} ORDER BY updated ASC`;
 
     const raw = await searchIssues(cfg, jql);

@@ -9,7 +9,9 @@ export async function GET(request: Request) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    const result = await runSync("cron");
+    const { searchParams } = new URL(request.url);
+    const full = searchParams.get("full") === "1" || searchParams.get("full") === "true";
+    const result = await runSync("cron", full);
     return Response.json({ ok: true, ...result });
   } catch (e) {
     return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
