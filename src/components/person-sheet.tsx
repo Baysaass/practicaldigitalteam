@@ -4,10 +4,10 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, GradePill, StatusPill, Pill } from "@/components/pill";
-import { Download, FileSpreadsheet, TrendingUp } from "lucide-react";
+import { Download, FileSpreadsheet, TrendingUp, AlertCircle } from "lucide-react";
 import { DownloadKpiDialog } from "@/components/download-kpi-dialog";
 import type { View } from "@/lib/data";
-import { METRICS, type PersonResult } from "@/lib/metrics";
+import { METRICS, isPersonOnLeave, type PersonResult } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import { num } from "@/lib/format";
 
@@ -23,7 +23,9 @@ export function PersonSheet({
 }) {
   const r = result;
   const d = r ? view.details[r.person] ?? { recent: [], history: [] } : null;
-  const note = r ? view.ratings[r.person]?.note : null;
+  const rating = r ? view.ratings[r.person] : null;
+  const note = rating?.note;
+  const onLeave = r ? isPersonOnLeave(rating) : false;
   const b = view.benchmark;
   const scoreDiff = r && r.score != null && b.avgScore ? r.score - b.avgScore : null;
   const [downloadOpen, setDownloadOpen] = useState(false);
@@ -40,7 +42,11 @@ export function PersonSheet({
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold truncate flex items-center gap-2">
                       <span>{r.person}</span>
-                      {view.ratings[r.person]?.status === "inactive" && <Pill tone="orange">Идэвхгүй</Pill>}
+                      {onLeave ? (
+                        <Pill tone="orange">Амралттай</Pill>
+                      ) : rating?.status === "inactive" ? (
+                        <Pill tone="orange">Идэвхгүй</Pill>
+                      ) : null}
                     </div>
                     <div className="text-xs font-normal text-muted-foreground truncate">
                       {view.sprintName ? `${view.sprintName} · ` : ""}
@@ -64,6 +70,23 @@ export function PersonSheet({
                 </div>
               </SheetHeader>
             <div className="space-y-5 px-6 py-5">
+              {rating?.leaveStart && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5">
+                  <div className="text-base shrink-0 mt-0.5">🌴</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold flex items-center gap-2">
+                      <span>{onLeave ? "Түр амралттай байна" : "Төлөвлөсөн амралттай"}</span>
+                      <span className="text-[11px] font-mono text-muted-foreground">({rating.leaveStart} ~ {rating.leaveEnd || "хугацаагүй"})</span>
+                    </div>
+                    {rating.leaveReason && (
+                      <div className="mt-0.5 text-muted-foreground">Шалтгаан: {rating.leaveReason}</div>
+                    )}
+                    <div className="mt-1 text-[11px] text-amber-800/90 dark:text-amber-300/90">
+                      Амралтын хугацаанд хамаарах нээлттэй ажлууд хоцролтод тооцогдохгүй ба <b>«Хүлээгдэж буй (Амралттай)»</b> төлөвт шилжсэн.
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="flex items-center justify-between rounded-lg border p-4">
                 <div>
                   <div className="text-xs font-medium text-muted-foreground">Нийт оноо</div>
@@ -79,10 +102,11 @@ export function PersonSheet({
                 </div>
                 <GradePill grade={r.grade} />
               </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="grid grid-cols-4 gap-2 text-center">
                 <Stat label="Авсан" value={r.taken} sub={`Үндсэн ${r.mainTaken} · Дэд ${r.subTaken}`} />
                 <Stat label="Хийсэн" value={r.done} sub={`Үндсэн ${r.mainDone} · Дэд ${r.subDone}`} />
                 <Stat label="Хоцорсон" value={r.overdue} bad={r.overdue > 0} />
+                <Stat label="Хүлээгдэж буй" value={r.onHold ?? 0} />
               </div>
               <div>
                 <div className="mb-3 text-sm font-semibold">Үзүүлэлтийн задаргаа</div>
@@ -149,8 +173,13 @@ export function PersonSheet({
                           <div className="flex items-center gap-2">
                             <span className="shrink-0 font-mono text-xs font-semibold text-primary">{t.key}</span>
                             <span className="flex-1 truncate text-sm font-medium">{t.summary}</span>
-                            <StatusPill status={t.status} done={t.done} late={t.late} />
+                            <StatusPill status={t.status} done={t.done} late={t.late} onHold={t.onHold} />
                           </div>
+                          {t.onHold && (
+                            <div className="rounded bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-800 dark:text-amber-300 font-medium">
+                              🌴 {t.onHoldReason || "Ажилтан амралттай тул хүлээгдэж байна (хоцролтод тооцохгүй)"}
+                            </div>
+                          )}
                           {isSubtask ? (
                             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                               <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-foreground/80">II зэрэглэл · Дэд ажил</span>

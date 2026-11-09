@@ -13,7 +13,7 @@ import { Avatar, GradePill, Pill } from "@/components/pill";
 import { clearZakiPin, saveKpiProfile, saveRating, saveWeights, syncNow, verifyZakiPin, updateZakiPin, setPersonStatus, removePerson, restorePerson, getAllPersonKpiPasswords, type KpiProfileInput } from "@/app/actions";
 import { generateDefaultKpiPassword } from "@/lib/kpi-password";
 import type { View } from "@/lib/data";
-import { METRICS, QUAL, type Weights } from "@/lib/metrics";
+import { METRICS, QUAL, isPersonOnLeave, type Weights } from "@/lib/metrics";
 
 const field = "h-8 rounded-lg border border-input bg-background px-2 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-input/30";
 
@@ -453,15 +453,20 @@ function KpiProfilesSection({ view }: { view: View }) {
                   const r = view.ratings[person];
                   const hasCustom = !!(r?.jobTitle || r?.department || r?.conclusion || r?.training || r?.voluntary);
                   const isInactive = r?.status === "inactive";
+                  const onLeave = isPersonOnLeave(r);
                   return (
-                    <TableRow key={person} className={isInactive ? "opacity-60 bg-muted/20" : ""}>
+                    <TableRow key={person} className={isInactive || onLeave ? "opacity-75 bg-muted/20" : ""}>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Avatar name={person} />
                           <div>
                             <div className="font-medium flex items-center gap-1.5">
                               {r?.fullName || person}
-                              {isInactive && <Pill tone="orange">Идэвхгүй</Pill>}
+                              {onLeave ? (
+                                <Pill tone="orange">Амралттай</Pill>
+                              ) : isInactive ? (
+                                <Pill tone="orange">Идэвхгүй</Pill>
+                              ) : null}
                             </div>
                             {r?.fullName && <div className="text-[11px] text-muted-foreground">{person}</div>}
                           </div>
@@ -483,9 +488,23 @@ function KpiProfilesSection({ view }: { view: View }) {
                         {r?.lateMinutes ?? 0}м / {r?.absentDays ?? 0}ө / {r?.vacationDays ?? 0}ө
                       </TableCell>
                       <TableCell className="text-center">
-                        <Pill tone={isInactive ? "orange" : "green"}>
-                          {isInactive ? "Идэвхгүй" : "Идэвхтэй"}
-                        </Pill>
+                        <div className="flex flex-col items-center gap-0.5">
+                          {onLeave ? (
+                            <Pill tone="orange">Амралттай</Pill>
+                          ) : isInactive ? (
+                            <Pill tone="orange">Идэвхгүй</Pill>
+                          ) : (
+                            <Pill tone="green">Идэвхтэй</Pill>
+                          )}
+                          {r?.leaveStart && (
+                            <span
+                              className="text-[10px] text-amber-700 dark:text-amber-400 font-medium whitespace-nowrap"
+                              title={r.leaveReason ? `${r.leaveReason} (${r.leaveStart} ~ ${r.leaveEnd || "..."})` : `${r.leaveStart} ~ ${r.leaveEnd || "..."}`}
+                            >
+                              🌴 {r.leaveStart.slice(5)} ~ {r.leaveEnd ? r.leaveEnd.slice(5) : "…"}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-center">
                         {hasCustom ? (
@@ -646,6 +665,10 @@ function KpiProfileEditSheet({
     absentDays: 0,
     vacationDays: 0,
     kpiPassword: "",
+    status: "active",
+    leaveStart: "",
+    leaveEnd: "",
+    leaveReason: "",
   });
 
   useEffect(() => {
@@ -665,6 +688,10 @@ function KpiProfileEditSheet({
         absentDays: initialData?.absentDays ?? 0,
         vacationDays: initialData?.vacationDays ?? 0,
         kpiPassword: initialPassword || generateDefaultKpiPassword(person),
+        status: initialData?.status ?? "active",
+        leaveStart: initialData?.leaveStart ?? "",
+        leaveEnd: initialData?.leaveEnd ?? "",
+        leaveReason: initialData?.leaveReason ?? "",
       });
     }
   }, [person, initialData, initialPassword]);
@@ -831,6 +858,83 @@ function KpiProfileEditSheet({
                     onChange={(e) => setFormData({ ...formData, vacationDays: Number(e.target.value) })}
                   />
                 </label>
+              </div>
+
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-semibold text-xs text-amber-900 dark:text-amber-200">
+                    <span>🌴 Түр амралт / Төлөв (Inactive) тохируулах</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={formData.status === "active" ? "default" : "outline"}
+                      className="h-7 text-xs px-2.5"
+                      onClick={() => setFormData({ ...formData, status: "active" })}
+                    >
+                      Идэвхтэй
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={formData.status === "inactive" ? "destructive" : "outline"}
+                      className="h-7 text-xs px-2.5"
+                      onClick={() => setFormData({ ...formData, status: "inactive" })}
+                    >
+                      Түр амралттай (Идэвхгүй)
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-medium text-muted-foreground">Амралт / чөлөө эхлэх өдөр</span>
+                    <Input
+                      type="date"
+                      value={formData.leaveStart ?? ""}
+                      onChange={(e) => setFormData({ ...formData, leaveStart: e.target.value })}
+                      className="h-9 bg-background"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-medium text-muted-foreground">Дуусах өдөр (хоосон бол тодорхойгүй)</span>
+                    <Input
+                      type="date"
+                      value={formData.leaveEnd ?? ""}
+                      onChange={(e) => setFormData({ ...formData, leaveEnd: e.target.value })}
+                      className="h-9 bg-background"
+                    />
+                  </label>
+                </div>
+
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-muted-foreground">Амралт, чөлөөний шалтгаан / тайлбар</span>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Жишээ: Ээлжийн амралт, эмнэлгийн чөлөө, түр чөлөөтэй..."
+                      value={formData.leaveReason ?? ""}
+                      onChange={(e) => setFormData({ ...formData, leaveReason: e.target.value })}
+                      className="h-9 bg-background text-xs"
+                    />
+                    {(formData.leaveStart || formData.leaveEnd || formData.leaveReason) && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 text-xs px-2 shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => setFormData({ ...formData, leaveStart: "", leaveEnd: "", leaveReason: "" })}
+                        title="Амралтын хугацааг цэвэрлэх"
+                      >
+                        Цэвэрлэх
+                      </Button>
+                    )}
+                  </div>
+                </label>
+
+                <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90 leading-relaxed">
+                  💡 <b>Чухал:</b> Амралтын хугацаанд тухайн ажилтанд оноогдсон бүх даалгаврууд <b>хоцролтод тооцогдохгүй</b> ба <b>«Хүлээгдэж буй (Амралттай)»</b> төлөвт автоматаар шилжинэ. Ингэснээр KPI үнэлгээнд хоцролтоор торгууль авахгүй.
+                </p>
               </div>
 
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3.5 space-y-2">

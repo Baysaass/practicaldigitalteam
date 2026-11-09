@@ -14,6 +14,7 @@ import {
   compute,
   dailySeries,
   getEffectiveDue,
+  isPersonOnLeave,
   isSubtask,
   peopleOf,
   sprintWindow,
@@ -62,6 +63,9 @@ export async function loadRatings(period: string): Promise<Record<string, Rating
       absentDays: r.absentDays,
       vacationDays: r.vacationDays,
       status: (def.status as "active" | "inactive") || "active",
+      leaveStart: (def.leaveStart as string) || null,
+      leaveEnd: (def.leaveEnd as string) || null,
+      leaveReason: (def.leaveReason as string) || null,
     };
   }
 
@@ -88,6 +92,9 @@ export async function loadRatings(period: string): Promise<Record<string, Rating
         absentDays: 0,
         vacationDays: 0,
         status: (def.status as "active" | "inactive") || "active",
+        leaveStart: (def.leaveStart as string) || null,
+        leaveEnd: (def.leaveEnd as string) || null,
+        leaveReason: (def.leaveReason as string) || null,
       };
     }
   }
@@ -149,6 +156,8 @@ export type TaskLite = {
   status: string;
   done: boolean;
   late: boolean;
+  onHold?: boolean;
+  onHoldReason?: string | null;
   due: string | null;
   resolved: string | null;
   started: string | null;
@@ -219,7 +228,7 @@ export async function buildView(sp: SearchParams) {
   const T = {
     taken: sum("taken"), done: sum("done"), takenDone: sum("takenDone"), dueN: sum("dueN"), onTime: sum("onTime"),
     mainTaken: sum("mainTaken"), mainDone: sum("mainDone"), subTaken: sum("subTaken"), subDone: sum("subDone"),
-    PV: sum("PV"), EV: sum("EV"), est: sum("est"), spent: sum("spent"), overdue: sum("overdue"), sp: sum("sp"),
+    PV: sum("PV"), EV: sum("EV"), est: sum("est"), spent: sum("spent"), overdue: sum("overdue"), onHold: sum("onHold"), sp: sum("sp"),
   };
   const scored = results.filter((r) => r.score != null);
   const avgScore = scored.length ? scored.reduce((a, r) => a + r.score!, 0) / scored.length : null;
@@ -266,7 +275,13 @@ export async function buildView(sp: SearchParams) {
         })
         .map<TaskLite>((t) => {
           const effDue = getEffectiveDue(t, C.sprint, sprintMap);
-          const isLate = !t.done && !!effDue && effDue.getTime() < now.getTime();
+          const onLeave = isPersonOnLeave(ratings[p], effDue ?? now);
+          const isLate = !t.done && !onLeave && !!effDue && effDue.getTime() < now.getTime();
+          const onHold = !t.done && onLeave;
+          const onHoldReason = onHold
+            ? (ratings[p]?.leaveReason ? `Ажилтан амралттай (${ratings[p]?.leaveReason})` : "Ажилтан түр амралттай")
+            : null;
+
           let duration: string | null = null;
           if (t.startedAt && t.resolvedAt && t.resolvedAt >= t.startedAt) {
             duration = formatDuration(t.resolvedAt.getTime() - t.startedAt.getTime());
@@ -280,6 +295,8 @@ export async function buildView(sp: SearchParams) {
             status: t.status,
             done: t.done,
             late: !!isLate,
+            onHold,
+            onHoldReason,
             due: effDue ? dayKey(effDue) : null,
             resolved: t.resolvedAt ? dateTimeKey(t.resolvedAt) : null,
             started: t.startedAt ? dateTimeKey(t.startedAt) : (t.takenAt ? dateTimeKey(t.takenAt) : null),

@@ -50,6 +50,9 @@ export type Rating = {
   absentDays?: number | null;
   vacationDays?: number | null;
   status?: "active" | "inactive" | null;
+  leaveStart?: string | null;
+  leaveEnd?: string | null;
+  leaveReason?: string | null;
 };
 
 export const METRICS = [
@@ -110,6 +113,22 @@ export function getEffectiveDue(t: Task, sprintContext: Sprint | null, sprintMap
   return null;
 }
 
+export function isPersonOnLeave(rating?: Rating | null, atDate: Date = new Date()): boolean {
+  if (!rating) return false;
+  if (rating.leaveStart) {
+    const s = new Date(`${rating.leaveStart.slice(0, 10)}T00:00:00Z`).getTime() - 480 * 60_000;
+    const e = rating.leaveEnd
+      ? new Date(`${rating.leaveEnd.slice(0, 10)}T23:59:59Z`).getTime() - 480 * 60_000
+      : Infinity;
+    const t = atDate.getTime();
+    if (t >= s && t <= e) return true;
+  }
+  if (rating.status === "inactive" && !rating.leaveStart && !rating.leaveEnd) {
+    return true;
+  }
+  return false;
+}
+
 /** Evaluation window: a sprint (its tasks are the commitment) or a date range. */
 export type Ctx = {
   sprint: Sprint | null;
@@ -138,6 +157,7 @@ export type PersonResult = {
   spent: number;
   reopened: number;
   overdue: number;
+  onHold: number;
   sp: number;
   completion: number | null;
   ontime: number | null;
@@ -159,7 +179,7 @@ export function compute(person: string, C: Ctx, rating: Rating | undefined, weig
   const sm = !!C.sprint;
   const sprintMap = C.sprintMap ?? (C.allSprints ? new Map(C.allSprints.map((s) => [s.id, s])) : undefined);
   const inR = (d: Date | null) => !!d && d >= C.s && d <= C.e;
-  let taken = 0, takenDone = 0, done = 0, dueN = 0, onTime = 0, PV = 0, EV = 0, est = 0, spent = 0, reopened = 0, overdue = 0, sp = 0;
+  let taken = 0, takenDone = 0, done = 0, dueN = 0, onTime = 0, PV = 0, EV = 0, est = 0, spent = 0, reopened = 0, overdue = 0, onHold = 0, sp = 0;
   let mainTaken = 0, mainDone = 0, subTaken = 0, subDone = 0;
   const cyc: number[] = [];
   for (const t of C.tasks) {
@@ -218,9 +238,12 @@ export function compute(person: string, C: Ctx, rating: Rating | undefined, weig
       if (t.done) EV += w;
     }
 
-    // Overdue tracking: only open tasks with an explicit deadline that expired in this period
-    if (!t.done && effDue) {
-      if (effDue.getTime() <= Math.min(C.now.getTime(), C.e.getTime())) {
+    // Overdue / On-hold tracking
+    if (!t.done) {
+      const onLeave = isPersonOnLeave(rating, effDue ?? C.now);
+      if (onLeave) {
+        onHold++;
+      } else if (effDue && effDue.getTime() <= Math.min(C.now.getTime(), C.e.getTime())) {
         if (sm || inR(effDue)) {
           overdue++;
         }
@@ -253,7 +276,7 @@ export function compute(person: string, C: Ctx, rating: Rating | undefined, weig
     }
   }
   const score = tw ? tsum / tw : null;
-  return { person, taken, takenDone, mainTaken, mainDone, subTaken, subDone, done, dueN, onTime, PV, EV, est, spent, reopened, overdue, sp, completion, ontime, spi, cpi, quality, cycle, qualAvg, sc, score, grade: gradeOf(score) };
+  return { person, taken, takenDone, mainTaken, mainDone, subTaken, subDone, done, dueN, onTime, PV, EV, est, spent, reopened, overdue, onHold, sp, completion, ontime, spi, cpi, quality, cycle, qualAvg, sc, score, grade: gradeOf(score) };
 }
 
 export function peopleOf(tasks: Task[]): string[] {

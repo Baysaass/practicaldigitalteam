@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Avatar, GradePill, Pill } from "@/components/pill";
 import { PersonSheet } from "@/components/person-sheet";
 import type { View } from "@/lib/data";
-import type { PersonResult } from "@/lib/metrics";
+import { isPersonOnLeave, type PersonResult } from "@/lib/metrics";
 import { num, pct, tone } from "@/lib/format";
 
 /** Dashboard: per-person summary; a row opens the person sheet. */
@@ -29,14 +29,20 @@ export function PeopleTable({ view }: { view: View }) {
         </TableHeader>
         <TableBody className="tabular-nums">
           {view.results.map((r) => {
-            const isInactive = view.ratings[r.person]?.status === "inactive";
+            const rating = view.ratings[r.person];
+            const isInactive = rating?.status === "inactive";
+            const onLeave = isPersonOnLeave(rating);
             return (
-              <TableRow key={r.person} className={`cursor-pointer ${isInactive ? "opacity-60 bg-muted/20" : ""}`} onClick={() => setOpen(r)}>
+              <TableRow key={r.person} className={`cursor-pointer ${isInactive || onLeave ? "opacity-75 bg-muted/20" : ""}`} onClick={() => setOpen(r)}>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Avatar name={r.person} />
                     <span className="font-medium">{r.person}</span>
-                    {isInactive && <Pill tone="orange">Идэвхгүй</Pill>}
+                    {onLeave ? (
+                      <Pill tone="orange">Амралттай</Pill>
+                    ) : isInactive ? (
+                      <Pill tone="orange">Идэвхгүй</Pill>
+                    ) : null}
                   </div>
                 </TableCell>
               <TableCell className="text-right">

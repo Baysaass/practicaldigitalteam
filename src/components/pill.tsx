@@ -30,8 +30,9 @@ export function GradePill({ grade, className }: { grade: Grade | null; className
   );
 }
 
-export function StatusPill({ status, done, late }: { status: string; done: boolean; late: boolean }) {
+export function StatusPill({ status, done, late, onHold }: { status: string; done: boolean; late: boolean; onHold?: boolean }) {
   if (done) return <Pill tone="green">{status}</Pill>;
+  if (onHold) return <Pill tone="orange">{status} · хүлээгдэж буй (амралттай)</Pill>;
   if (late) return <Pill tone="red">{status} · хоцорсон</Pill>;
   if (/progress|хийгдэж|review/i.test(status)) return <Pill tone="blue">{status}</Pill>;
   return <Pill tone="orange">{status}</Pill>;

@@ -131,6 +131,10 @@ export type KpiProfileInput = {
   absentDays?: number;
   vacationDays?: number;
   kpiPassword?: string;
+  status?: "active" | "inactive";
+  leaveStart?: string | null;
+  leaveEnd?: string | null;
+  leaveReason?: string | null;
 };
 
 /** Get person's individual download password (or deterministic default). */
@@ -245,6 +249,10 @@ export async function saveKpiProfile(person: string, period: string, data: KpiPr
       role: patch.role,
       routineTasks: patch.routineTasks,
       manager: patch.manager,
+      status: data.status !== undefined ? data.status : (currentProfiles[person]?.status ?? "active"),
+      leaveStart: data.leaveStart !== undefined ? (data.leaveStart?.trim() || null) : (currentProfiles[person]?.leaveStart ?? null),
+      leaveEnd: data.leaveEnd !== undefined ? (data.leaveEnd?.trim() || null) : (currentProfiles[person]?.leaveEnd ?? null),
+      leaveReason: data.leaveReason !== undefined ? (data.leaveReason?.trim() || null) : (currentProfiles[person]?.leaveReason ?? null),
     };
     await db
       .insert(settings)
@@ -275,7 +283,11 @@ export async function saveKpiProfile(person: string, period: string, data: KpiPr
   return { ok: true };
 }
 
-export async function setPersonStatus(person: string, status: "active" | "inactive"): Promise<{ ok: boolean }> {
+export async function setPersonStatus(
+  person: string,
+  status: "active" | "inactive",
+  leave?: { leaveStart?: string | null; leaveEnd?: string | null; leaveReason?: string | null }
+): Promise<{ ok: boolean }> {
   const isAuth = await isZakiAuthorized();
   if (!isAuth) throw new Error("Удирдлагын эрх шаардлагатай");
 
@@ -285,6 +297,13 @@ export async function setPersonStatus(person: string, status: "active" | "inacti
   currentProfiles[person] = {
     ...(currentProfiles[person] || {}),
     status,
+    ...(leave
+      ? {
+          leaveStart: leave.leaveStart !== undefined ? (leave.leaveStart?.trim() || null) : (currentProfiles[person]?.leaveStart ?? null),
+          leaveEnd: leave.leaveEnd !== undefined ? (leave.leaveEnd?.trim() || null) : (currentProfiles[person]?.leaveEnd ?? null),
+          leaveReason: leave.leaveReason !== undefined ? (leave.leaveReason?.trim() || null) : (currentProfiles[person]?.leaveReason ?? null),
+        }
+      : {}),
   };
   await db
     .insert(settings)

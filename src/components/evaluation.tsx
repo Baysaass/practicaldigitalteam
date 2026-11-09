@@ -10,7 +10,7 @@ import { Avatar, GradePill, Pill } from "@/components/pill";
 import { PersonSheet } from "@/components/person-sheet";
 import { DownloadKpiDialog } from "@/components/download-kpi-dialog";
 import type { View } from "@/lib/data";
-import { METRICS, QUAL, type PersonResult, type Weights } from "@/lib/metrics";
+import { METRICS, QUAL, isPersonOnLeave, type PersonResult, type Weights } from "@/lib/metrics";
 import { num, pct, tone } from "@/lib/format";
 
 export function Evaluation({ view }: { view: View }) {
@@ -85,15 +85,24 @@ export function Evaluation({ view }: { view: View }) {
                 </TableRow>
               </TableHeader>
               <TableBody className="tabular-nums">
-                {ranked.map((r, i) => (
-                  <TableRow key={r.person} className="cursor-pointer hover:bg-muted/40" onClick={() => setOpen(r)}>
-                    <TableCell className="text-muted-foreground">{i + 1}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Avatar name={r.person} />
-                        <span className="font-medium">{r.person}</span>
-                      </div>
-                    </TableCell>
+                {ranked.map((r, i) => {
+                  const rating = view.ratings[r.person];
+                  const isInactive = rating?.status === "inactive";
+                  const onLeave = isPersonOnLeave(rating);
+                  return (
+                    <TableRow key={r.person} className={`cursor-pointer hover:bg-muted/40 ${isInactive || onLeave ? "opacity-75 bg-muted/10" : ""}`} onClick={() => setOpen(r)}>
+                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Avatar name={r.person} />
+                          <span className="font-medium">{r.person}</span>
+                          {onLeave ? (
+                            <Pill tone="orange">Амралттай</Pill>
+                          ) : isInactive ? (
+                            <Pill tone="orange">Идэвхгүй</Pill>
+                          ) : null}
+                        </div>
+                      </TableCell>
                     <TableCell className="text-right">
                       <div>{r.taken}</div>
                       {(r.mainTaken > 0 || r.subTaken > 0) && (
@@ -136,7 +145,8 @@ export function Evaluation({ view }: { view: View }) {
                       </Button>
                     </TableCell>
                   </TableRow>
-                ))}
+                );
+              })}
               </TableBody>
             </Table>
           </div>
