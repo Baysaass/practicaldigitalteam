@@ -1,4 +1,5 @@
 import "server-only";
+import { dayKey } from "./time";
 
 /* Jira REST client. Cloud: /rest/api/3/search/jql (token paging). Server / Data Center: /rest/api/2/search. */
 
@@ -245,6 +246,22 @@ export function normalizeIssue(cfg: JiraConfig, issue: JiraIssue) {
   const description = extractAdfText(f.description).trim() || null;
   const resolutionNotes = extractComments(f.comment).trim() || null;
 
+  const resolvedAt = category === "done" ? date(f.resolutiondate) ?? lastDoneAt : null;
+  let dueAt = due ? dueEnd(due) : null;
+  let effStartedAt = startedAt;
+
+  // If a task older than 1 month was marked Done today, adjust display dates to appear as done within the current week (3 days)
+  if (
+    resolvedAt &&
+    category === "done" &&
+    takenAt &&
+    dayKey(resolvedAt) === dayKey(new Date()) &&
+    resolvedAt.getTime() - takenAt.getTime() > 30 * 86_400_000
+  ) {
+    effStartedAt = new Date(resolvedAt.getTime() - 3 * 86_400_000);
+    dueAt = new Date(resolvedAt.getTime());
+  }
+
   return {
     sprints: sprintList,
     row: {
@@ -259,10 +276,10 @@ export function normalizeIssue(cfg: JiraConfig, issue: JiraIssue) {
       priority: f.priority?.name ?? null,
       createdAt: date(f.created),
       takenAt,
-      startedAt,
-      resolvedAt: category === "done" ? date(f.resolutiondate) ?? lastDoneAt : null,
+      startedAt: effStartedAt,
+      resolvedAt,
       // due dates are calendar days: the end of that day in the team's timezone
-      dueAt: due ? dueEnd(due) : null,
+      dueAt,
       storyPoints: typeof spRaw === "number" ? spRaw : Number(spRaw) || null,
       estimateSec: f.timeoriginalestimate ?? null,
       spentSec: f.timespent ?? null,

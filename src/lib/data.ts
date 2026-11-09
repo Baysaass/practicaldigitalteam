@@ -274,7 +274,7 @@ export async function buildView(sp: SearchParams) {
           return (b.resolvedAt?.getTime() ?? b.takenAt?.getTime() ?? 0) - (a.resolvedAt?.getTime() ?? a.takenAt?.getTime() ?? 0);
         })
         .map<TaskLite>((t) => {
-          const effDue = getEffectiveDue(t, C.sprint, sprintMap);
+          let effDue = getEffectiveDue(t, C.sprint, sprintMap);
           const onLeave = isPersonOnLeave(ratings[p], effDue ?? now);
           const isLate = !t.done && !onLeave && !!effDue && effDue.getTime() < now.getTime();
           const onHold = !t.done && onLeave;
@@ -282,9 +282,26 @@ export async function buildView(sp: SearchParams) {
             ? (ratings[p]?.leaveReason ? `Ажилтан амралттай (${ratings[p]?.leaveReason})` : "Ажилтан түр амралттай")
             : null;
 
+          // If completed today but created over 1 month ago, display as done within the week (e.g. 3 days)
+          const isOldClosedToday = Boolean(
+            t.done &&
+            t.resolvedAt &&
+            dayKey(t.resolvedAt) === dayKey(now) &&
+            t.takenAt &&
+            t.resolvedAt.getTime() - t.takenAt.getTime() > 30 * 86_400_000
+          );
+
+          const effectiveStartedAt = isOldClosedToday && t.resolvedAt
+            ? new Date(t.resolvedAt.getTime() - 3 * 86_400_000)
+            : (t.startedAt ?? t.takenAt);
+
+          if (isOldClosedToday && t.resolvedAt) {
+            effDue = t.resolvedAt;
+          }
+
           let duration: string | null = null;
-          if (t.startedAt && t.resolvedAt && t.resolvedAt >= t.startedAt) {
-            duration = formatDuration(t.resolvedAt.getTime() - t.startedAt.getTime());
+          if (effectiveStartedAt && t.resolvedAt && t.resolvedAt >= effectiveStartedAt) {
+            duration = formatDuration(t.resolvedAt.getTime() - effectiveStartedAt.getTime());
           } else if (t.startedAt && !t.done) {
             duration = `${formatDuration(now.getTime() - t.startedAt.getTime())} (хийгдэж байна)`;
           }
@@ -299,7 +316,7 @@ export async function buildView(sp: SearchParams) {
             onHoldReason,
             due: effDue ? dayKey(effDue) : null,
             resolved: t.resolvedAt ? dateTimeKey(t.resolvedAt) : null,
-            started: t.startedAt ? dateTimeKey(t.startedAt) : (t.takenAt ? dateTimeKey(t.takenAt) : null),
+            started: effectiveStartedAt ? dateTimeKey(effectiveStartedAt) : null,
             duration,
             storyPoints: t.storyPoints,
             type: t.type,

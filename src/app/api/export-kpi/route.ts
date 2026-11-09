@@ -335,10 +335,24 @@ export async function GET(req: NextRequest) {
     orderedTasks.forEach((t) => {
       const r = currentRow++;
       const isDone = t.statusCategory === "done";
-      const startStr = t.startedAt ? dayKey(t.startedAt) : t.takenAt ? dayKey(t.takenAt) : "";
+      let startStr = t.startedAt ? dayKey(t.startedAt) : t.takenAt ? dayKey(t.takenAt) : "";
       const taskDue = getTaskDue(t);
-      const dueStr = taskDue ? dayKey(taskDue) : dayKey(endDate);
+      let dueStr = taskDue ? dayKey(taskDue) : dayKey(endDate);
       const resStr = t.resolvedAt ? dayKey(t.resolvedAt) : isDone ? todayStr : "";
+
+      // If completed today but created over 1 month ago, display as done within the week
+      const isOldClosedToday = Boolean(
+        isDone &&
+        t.resolvedAt &&
+        dayKey(t.resolvedAt) === todayStr &&
+        t.takenAt &&
+        t.resolvedAt.getTime() - t.takenAt.getTime() > 30 * 86_400_000
+      );
+
+      if (isOldClosedToday && t.resolvedAt) {
+        startStr = dayKey(new Date(t.resolvedAt.getTime() - 3 * 86_400_000));
+        dueStr = todayStr;
+      }
       const qualityScore = t.reopens === 0 ? 10 : t.reopens === 1 ? 8 : 6;
 
       const isSubtask = isSub(t);

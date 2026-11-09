@@ -311,8 +311,17 @@ async function main() {
 
   idx = 1;
   for (const iss of doneIssues) {
-    const started = getStartedAt(iss);
+    let started = getStartedAt(iss);
     const resolved = getResolvedAt(iss);
+    const createdDate = new Date(iss.fields.created);
+    const isDoneToday = Boolean(resolved && formatDate(resolved).slice(0, 10) === formatDate(now).slice(0, 10));
+    const isOld = Boolean(createdDate && resolved && (resolved.getTime() - createdDate.getTime() > 30 * 86_400_000));
+
+    // If completed today but created over 1 month ago, display as completed within the week (3 days)
+    if (isDoneToday && isOld && resolved) {
+      started = new Date(resolved.getTime() - 3 * 86_400_000);
+    }
+
     let duration = "-";
     if (started && resolved && resolved >= started) {
       duration = formatDuration(resolved.getTime() - started.getTime());

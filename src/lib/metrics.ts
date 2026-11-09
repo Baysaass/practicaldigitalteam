@@ -227,11 +227,19 @@ export function compute(person: string, C: Ctx, rating: Rating | undefined, weig
       );
 
       if (t.resolvedAt) {
-        const st = t.startedAt && t.startedAt < t.resolvedAt ? t.startedAt : t.takenAt;
+        const isOldClosedToday = Boolean(
+          t.done &&
+          t.resolvedAt &&
+          dayKey(t.resolvedAt) === dayKey(C.now) &&
+          t.takenAt &&
+          t.resolvedAt.getTime() - t.takenAt.getTime() > 30 * DAY
+        );
+        const st = isOldClosedToday
+          ? new Date(t.resolvedAt.getTime() - 3 * DAY)
+          : (t.startedAt && t.startedAt < t.resolvedAt ? t.startedAt : t.takenAt);
         if (st) {
           const durationDays = (t.resolvedAt.getTime() - st.getTime()) / DAY;
-          // Do not distort cycle time with administrative late-close of tasks from months ago
-          if (durationDays <= 30 && !isPastMonthTask) {
+          if (durationDays <= 30) {
             cyc.push(durationDays);
           }
         }
