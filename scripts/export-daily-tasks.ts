@@ -37,12 +37,21 @@ interface JiraIssue {
     summary: string;
     status: { name: string; statusCategory: { name: string; key: string } };
     assignee?: { displayName: string; emailAddress?: string };
+    reporter?: { displayName: string };
+    creator?: { displayName: string };
     project: { key: string; name: string };
     issuetype?: { name: string };
     priority?: { name: string };
     created: string;
     updated: string;
     resolutiondate?: string;
+  };
+  changelog?: {
+    histories?: {
+      author?: { displayName?: string };
+      created: string;
+      items?: { field: string; fromString?: string | null; toString?: string | null }[];
+    }[];
   };
 }
 
@@ -54,7 +63,8 @@ async function fetchJira(jql: string): Promise<JiraIssue[]> {
     const params = new URLSearchParams({
       jql,
       maxResults: "100",
-      fields: "summary,status,assignee,project,issuetype,priority,created,updated,resolutiondate",
+      fields: "summary,status,assignee,project,issuetype,priority,created,updated,resolutiondate,reporter,creator",
+      expand: "changelog",
     });
     if (nextPageToken) {
       params.set("nextPageToken", nextPageToken);
@@ -146,7 +156,29 @@ async function main() {
   // Aggregate by assignee
   const summaryMap = new Map<string, { inProgress: number; done: number }>();
 
-  const getAssignee = (iss: JiraIssue) => iss.fields.assignee?.displayName || "Оноогоогүй";
+  const getAssignee = (iss: JiraIssue): string => {
+    if (iss.fields.assignee?.displayName) {
+      return iss.fields.assignee.displayName;
+    }
+    const histories = iss.changelog?.histories || [];
+    let statusActor: string | null = null;
+    for (const h of histories) {
+      const author = h.author?.displayName;
+      for (const it of h.items || []) {
+        if (it.field === "status" && author && author !== "Webmaster") {
+          statusActor = author;
+        }
+      }
+    }
+    if (statusActor) return statusActor;
+    if (iss.fields.reporter?.displayName && iss.fields.reporter.displayName !== "Webmaster") {
+      return iss.fields.reporter.displayName;
+    }
+    if (iss.fields.creator?.displayName && iss.fields.creator.displayName !== "Webmaster") {
+      return iss.fields.creator.displayName;
+    }
+    return "Оноогоогүй";
+  };
 
   for (const iss of inProgressIssues) {
     const a = getAssignee(iss);

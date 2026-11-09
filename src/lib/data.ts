@@ -248,13 +248,16 @@ export async function buildView(sp: SearchParams) {
           if (t.assignee !== p) return false;
           if (C.sprint) return true;
           const effDue = getEffectiveDue(t, null, sprintMap);
+          const isActive = !t.done && (t.status === "In Progress" || t.status === "Doing" || t.status === "In Review" || t.status === "To Do");
           return (
             (t.takenAt && t.takenAt >= C.s && t.takenAt <= C.e) ||
             (t.resolvedAt && t.resolvedAt >= C.s && t.resolvedAt <= C.e) ||
-            (effDue && effDue >= C.s && effDue <= C.e)
+            (effDue && effDue >= C.s && effDue <= C.e) ||
+            isActive
           );
         })
         .sort((a, b) => {
+          if (a.done !== b.done) return a.done ? 1 : -1;
           const isSubA = isSubtask(a) ? 1 : 0;
           const isSubB = isSubtask(b) ? 1 : 0;
           if (isSubA !== isSubB) return isSubA - isSubB;
@@ -262,7 +265,7 @@ export async function buildView(sp: SearchParams) {
         })
         .map<TaskLite>((t) => {
           const effDue = getEffectiveDue(t, C.sprint, sprintMap);
-          const isLate = !t.done && ((effDue && effDue < now) || (!effDue && t.takenAt && now.getTime() - t.takenAt.getTime() > 21 * DAY));
+          const isLate = !t.done && !!effDue && effDue.getTime() < now.getTime();
           return {
             key: t.key,
             summary: t.summary,

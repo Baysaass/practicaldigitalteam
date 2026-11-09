@@ -168,7 +168,9 @@ export function compute(person: string, C: Ctx, rating: Rating | undefined, weig
     const effDue = getEffectiveDue(t, C.sprint, sprintMap);
     const doneIn = t.done && (!t.resolvedAt || (effDue ? t.resolvedAt <= effDue : inR(t.resolvedAt) || t.resolvedAt <= C.e));
 
-    if (sm || inR(t.takenAt) || inR(effDue)) {
+    const isActiveInProgress = !t.done && (t.status === "In Progress" || t.status === "Doing" || t.status === "In Review");
+
+    if (sm || inR(t.takenAt) || inR(effDue) || isActiveInProgress) {
       taken++;
       if (isSub) {
         subTaken++;
@@ -208,7 +210,7 @@ export function compute(person: string, C: Ctx, rating: Rating | undefined, weig
         onTime++;
       }
     }
-    if (sm || inR(effDue) || inR(t.takenAt) || inR(t.resolvedAt)) {
+    if (sm || inR(effDue) || inR(t.takenAt) || inR(t.resolvedAt) || isActiveInProgress) {
       // Subtasks have default weight 0.5 (or explicit storyPoints); main tasks have default weight 1.0 (or explicit storyPoints)
       const defaultWeight = isSub ? 0.5 : 1.0;
       const w = t.storyPoints && t.storyPoints > 0 ? t.storyPoints : defaultWeight;
@@ -216,12 +218,12 @@ export function compute(person: string, C: Ctx, rating: Rating | undefined, weig
       if (t.done) EV += w;
     }
 
-    // Overdue tracking: only open tasks past deadline
-    if (!t.done) {
-      if (effDue && effDue.getTime() <= Math.min(C.now.getTime(), C.e.getTime())) {
-        overdue++;
-      } else if (!effDue && t.takenAt && (C.now.getTime() - t.takenAt.getTime() > 21 * DAY)) {
-        overdue++;
+    // Overdue tracking: only open tasks with an explicit deadline that expired in this period
+    if (!t.done && effDue) {
+      if (effDue.getTime() <= Math.min(C.now.getTime(), C.e.getTime())) {
+        if (sm || inR(effDue)) {
+          overdue++;
+        }
       }
     }
   }

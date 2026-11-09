@@ -67,7 +67,7 @@ async function get(cfg: JiraConfig, path: string, params: Record<string, string>
 export async function searchIssues(cfg: JiraConfig, jql: string, limit = 20_000): Promise<JiraIssue[]> {
   const fields = [
     "summary", "assignee", "status", "issuetype", "priority", "created", "updated", "resolutiondate", "duedate",
-    "timeoriginalestimate", "timespent", "parent", "description", "comment", cfg.spField, cfg.sprintField,
+    "timeoriginalestimate", "timespent", "parent", "description", "comment", "reporter", "creator", cfg.spField, cfg.sprintField,
   ].join(",");
   const out: JiraIssue[] = [];
   if (cfg.deployment === "cloud") {
@@ -160,23 +160,71 @@ function extractComments(raw: unknown): string {
 /** Map a Jira issue to our row, deriving taken / started / reopens from the changelog. */
 export function normalizeIssue(cfg: JiraConfig, issue: JiraIssue) {
   const f = issue.fields;
-  const assignee = f.assignee?.displayName ?? null;
-  const assigneeId = f.assignee?.accountId ?? f.assignee?.name ?? f.assignee?.key ?? null;
+  let assignee = f.assignee?.displayName ?? null;
+  let assigneeId = f.assignee?.accountId ?? f.assignee?.name ?? f.assignee?.key ?? null;
   const histories = [...(issue.changelog?.histories ?? [])].sort((a, b) => Date.parse(a.created) - Date.parse(b.created));
   const isDone = (n?: string | null) => !!n && cfg.doneNames.has(n.trim().toLowerCase());
   let takenAt = date(f.created), startedAt: Date | null = null, lastDoneAt: Date | null = null, reopens = 0;
+
+  let resolvedBy: string | null = null;
+  let resolvedById: string | null = null;
+  let lastStatusActor: string | null = null;
+  let lastStatusActorId: string | null = null;
+  let lastAssigneeFromHistory: string | null = null;
+
   for (const h of histories) {
     const at = date(h.created);
+    const authorName = (h as any).author?.displayName ?? null;
+    const authorId = (h as any).author?.accountId ?? null;
+
     for (const it of h.items ?? []) {
-      if (it.field === "assignee" && assignee && (it.to === assigneeId || it.toString === assignee)) takenAt = at;
+      if (it.field === "assignee") {
+        if (it.toString) lastAssigneeFromHistory = it.toString;
+        if (assignee && (it.to === assigneeId || it.toString === assignee)) takenAt = at;
+      }
       if (it.field === "status") {
         startedAt ??= at;
         if (isDone(it.fromString) && !isDone(it.toString)) reopens++;
-        if (isDone(it.toString)) lastDoneAt = at;
+        if (isDone(it.toString)) {
+          lastDoneAt = at;
+          if (authorName) {
+            resolvedBy = authorName;
+            resolvedById = authorId;
+          }
+        }
+        if (authorName) {
+          lastStatusActor = authorName;
+          lastStatusActorId = authorId;
+        }
       }
     }
   }
+
   const category = f.status?.statusCategory?.key ?? (isDone(f.status?.name) ? "done" : null);
+
+  // If assignee is missing in Jira, attribute to the actual worker
+  const reporterObj = f.reporter as { displayName?: string; accountId?: string } | undefined;
+  const creatorObj = f.creator as { displayName?: string; accountId?: string } | undefined;
+  const reporterName = reporterObj?.displayName ?? null;
+  const creatorName = creatorObj?.displayName ?? null;
+
+  if (!assignee) {
+    if (category === "done" && resolvedBy && resolvedBy !== "Webmaster") {
+      assignee = resolvedBy;
+      assigneeId = resolvedById;
+    } else if (lastStatusActor && lastStatusActor !== "Webmaster") {
+      assignee = lastStatusActor;
+      assigneeId = lastStatusActorId;
+    } else if (lastAssigneeFromHistory && lastAssigneeFromHistory !== "Webmaster") {
+      assignee = lastAssigneeFromHistory;
+    } else if (reporterName && reporterName !== "Webmaster") {
+      assignee = reporterName;
+      assigneeId = reporterObj?.accountId ?? null;
+    } else if (creatorName && creatorName !== "Webmaster") {
+      assignee = creatorName;
+      assigneeId = creatorObj?.accountId ?? null;
+    }
+  }
   const spRaw = f[cfg.spField];
   const sprintList = parseSprints(f[cfg.sprintField]);
   const due = typeof f.duedate === "string" ? f.duedate : null;
