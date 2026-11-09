@@ -11,6 +11,27 @@ export function dayKey(d: Date): string {
   return new Date(d.getTime() + OFFSET_MS).toISOString().slice(0, 10);
 }
 
+/** "YYYY-MM-DD HH:mm" of a moment in the team's timezone. */
+export function dateTimeKey(d: Date): string {
+  const local = new Date(d.getTime() + OFFSET_MS).toISOString();
+  return `${local.slice(0, 10)} ${local.slice(11, 16)}`;
+}
+
+/** Format duration into human readable string: e.g. "2ц 30м" or "1ө 4ц" */
+export function formatDuration(ms: number): string {
+  if (ms < 0) ms = 0;
+  const mins = Math.round(ms / 60_000);
+  if (mins < 60) return `${mins} мин`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  if (hours < 24) {
+    return remMins > 0 ? `${hours} ц ${remMins} мин` : `${hours} ц`;
+  }
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `${days} өдөр ${remHours} ц` : `${days} өдөр`;
+}
+
 /** Start of the given local day (YYYY-MM-DD) as an instant. */
 export function startOfDay(ymd: string): Date {
   return new Date(Date.parse(`${ymd}T00:00:00Z`) - OFFSET_MS);

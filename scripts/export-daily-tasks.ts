@@ -91,10 +91,10 @@ async function fetchJira(jql: string): Promise<JiraIssue[]> {
   return issues;
 }
 
-function formatDate(dateStr?: string | null): string {
+function formatDate(dateStr?: string | Date | null): string {
   if (!dateStr) return "-";
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return dateStr;
+  const d = typeof dateStr === "string" ? new Date(dateStr) : dateStr;
+  if (isNaN(d.getTime())) return String(dateStr);
   return d.toLocaleString("mn-MN", {
     timeZone: "Asia/Ulaanbaatar",
     year: "numeric",
@@ -103,6 +103,61 @@ function formatDate(dateStr?: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+const isDone = (n?: string | null) =>
+  !!n && /^(done|closed|resolved|дууссан|хийгдсэн|хаагдсан)/i.test(n.trim());
+
+const isProgress = (n?: string | null) =>
+  !!n && /^(in\s*progress|progress|doing|in\s*dev|in\s*development|in\s*review|хийж\s*байгаа|хөгжүүлж\s*байгаа)/i.test(n.trim());
+
+function getStartedAt(iss: JiraIssue): Date | null {
+  const histories = iss.changelog?.histories || [];
+  for (const h of histories) {
+    for (const it of h.items || []) {
+      if (it.field === "status" && isProgress(it.toString)) {
+        return new Date(h.created);
+      }
+    }
+  }
+  if (isProgress(iss.fields.status?.name)) {
+    return new Date(iss.fields.updated || iss.fields.created);
+  }
+  return null;
+}
+
+function getResolvedAt(iss: JiraIssue): Date | null {
+  if (iss.fields.resolutiondate) {
+    return new Date(iss.fields.resolutiondate);
+  }
+  const histories = iss.changelog?.histories || [];
+  let lastDone: Date | null = null;
+  for (const h of histories) {
+    for (const it of h.items || []) {
+      if (it.field === "status" && isDone(it.toString)) {
+        lastDone = new Date(h.created);
+      }
+    }
+  }
+  if (lastDone) return lastDone;
+  if (isDone(iss.fields.status?.name)) {
+    return new Date(iss.fields.updated);
+  }
+  return null;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 0) ms = 0;
+  const mins = Math.round(ms / 60_000);
+  if (mins < 60) return `${mins} мин`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  if (hours < 24) {
+    return remMins > 0 ? `${hours} цаг ${remMins} мин` : `${hours} цаг`;
+  }
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `${days} өдөр ${remHours} цаг` : `${days} өдөр`;
 }
 
 async function main() {
@@ -215,11 +270,16 @@ async function main() {
     { header: "Төрөл", key: "type", width: 14 },
     { header: "Таск нэр (Summary)", key: "summary", width: 50 },
     { header: "Төлөв", key: "status", width: 16 },
-    { header: "Сүүлд шинэчлэгдсэн", key: "updated", width: 22 },
+    { header: "Эхэлсэн огноо, цаг", key: "started", width: 20 },
+    { header: "Зарцуулж буй хугацаа", key: "duration", width: 20 },
+    { header: "Сүүлд шинэчлэгдсэн", key: "updated", width: 20 },
   ];
 
   idx = 1;
+  const now = new Date();
   for (const iss of inProgressIssues) {
+    const started = getStartedAt(iss);
+    const duration = started ? `${formatDuration(now.getTime() - started.getTime())} (хийгдэж байна)` : "-";
     wsProgress.addRow({
       no: idx++,
       assignee: getAssignee(iss),
@@ -228,6 +288,8 @@ async function main() {
       type: iss.fields.issuetype?.name || "-",
       summary: iss.fields.summary,
       status: iss.fields.status.name,
+      started: formatDate(started),
+      duration,
       updated: formatDate(iss.fields.updated),
     });
   }
@@ -242,11 +304,19 @@ async function main() {
     { header: "Төрөл", key: "type", width: 14 },
     { header: "Таск нэр (Summary)", key: "summary", width: 50 },
     { header: "Төлөв", key: "status", width: 16 },
-    { header: "Дууссан / Шинэчлэгдсэн", key: "updated", width: 22 },
+    { header: "Эхэлсэн огноо, цаг", key: "started", width: 20 },
+    { header: "Дууссан огноо, цаг", key: "resolved", width: 20 },
+    { header: "Нийт зарцуулсан хугацаа", key: "duration", width: 22 },
   ];
 
   idx = 1;
   for (const iss of doneIssues) {
+    const started = getStartedAt(iss);
+    const resolved = getResolvedAt(iss);
+    let duration = "-";
+    if (started && resolved && resolved >= started) {
+      duration = formatDuration(resolved.getTime() - started.getTime());
+    }
     wsDone.addRow({
       no: idx++,
       assignee: getAssignee(iss),
@@ -255,7 +325,9 @@ async function main() {
       type: iss.fields.issuetype?.name || "-",
       summary: iss.fields.summary,
       status: iss.fields.status.name,
-      updated: formatDate(iss.fields.resolutiondate || iss.fields.updated),
+      started: formatDate(started),
+      resolved: formatDate(resolved),
+      duration,
     });
   }
 

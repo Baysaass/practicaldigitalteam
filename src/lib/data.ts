@@ -18,7 +18,7 @@ import {
   peopleOf,
   sprintWindow,
 } from "./metrics";
-import { DAY, dayKey, endOfDay, isYmd, quarterOf, startOfDay } from "./time";
+import { DAY, dayKey, dateTimeKey, endOfDay, formatDuration, isYmd, quarterOf, startOfDay } from "./time";
 
 export type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -152,6 +152,7 @@ export type TaskLite = {
   due: string | null;
   resolved: string | null;
   started: string | null;
+  duration?: string | null;
   storyPoints: number | null;
   type: string | null;
   reopens: number;
@@ -266,6 +267,13 @@ export async function buildView(sp: SearchParams) {
         .map<TaskLite>((t) => {
           const effDue = getEffectiveDue(t, C.sprint, sprintMap);
           const isLate = !t.done && !!effDue && effDue.getTime() < now.getTime();
+          let duration: string | null = null;
+          if (t.startedAt && t.resolvedAt && t.resolvedAt >= t.startedAt) {
+            duration = formatDuration(t.resolvedAt.getTime() - t.startedAt.getTime());
+          } else if (t.startedAt && !t.done) {
+            duration = `${formatDuration(now.getTime() - t.startedAt.getTime())} (хийгдэж байна)`;
+          }
+
           return {
             key: t.key,
             summary: t.summary,
@@ -273,8 +281,9 @@ export async function buildView(sp: SearchParams) {
             done: t.done,
             late: !!isLate,
             due: effDue ? dayKey(effDue) : null,
-            resolved: t.resolvedAt ? dayKey(t.resolvedAt) : null,
-            started: t.startedAt ? dayKey(t.startedAt) : (t.takenAt ? dayKey(t.takenAt) : null),
+            resolved: t.resolvedAt ? dateTimeKey(t.resolvedAt) : null,
+            started: t.startedAt ? dateTimeKey(t.startedAt) : (t.takenAt ? dateTimeKey(t.takenAt) : null),
+            duration,
             storyPoints: t.storyPoints,
             type: t.type,
             reopens: t.reopens,

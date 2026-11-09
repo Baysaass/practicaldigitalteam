@@ -164,6 +164,8 @@ export function normalizeIssue(cfg: JiraConfig, issue: JiraIssue) {
   let assigneeId = f.assignee?.accountId ?? f.assignee?.name ?? f.assignee?.key ?? null;
   const histories = [...(issue.changelog?.histories ?? [])].sort((a, b) => Date.parse(a.created) - Date.parse(b.created));
   const isDone = (n?: string | null) => !!n && cfg.doneNames.has(n.trim().toLowerCase());
+  const isProgress = (n?: string | null) =>
+    !!n && /^(in\s*progress|progress|doing|in\s*dev|in\s*development|in\s*review|хийж\s*байгаа|хөгжүүлж\s*байгаа|хөгжүүлэлт)/i.test(n.trim());
   let takenAt = date(f.created), startedAt: Date | null = null, lastDoneAt: Date | null = null, reopens = 0;
 
   let resolvedBy: string | null = null;
@@ -183,8 +185,12 @@ export function normalizeIssue(cfg: JiraConfig, issue: JiraIssue) {
         if (assignee && (it.to === assigneeId || it.toString === assignee)) takenAt = at;
       }
       if (it.field === "status") {
-        startedAt ??= at;
+        // Record the exact time when task was moved to In Progress
+        if (isProgress(it.toString)) {
+          startedAt ??= at;
+        }
         if (isDone(it.fromString) && !isDone(it.toString)) reopens++;
+        // Record the exact time when task was moved to Done
         if (isDone(it.toString)) {
           lastDoneAt = at;
           if (authorName) {
@@ -198,6 +204,11 @@ export function normalizeIssue(cfg: JiraConfig, issue: JiraIssue) {
         }
       }
     }
+  }
+
+  // If task is currently In Progress but had no status change in history, use updated or created
+  if (!startedAt && isProgress(f.status?.name)) {
+    startedAt = date(f.updated) ?? date(f.created);
   }
 
   const category = f.status?.statusCategory?.key ?? (isDone(f.status?.name) ? "done" : null);
