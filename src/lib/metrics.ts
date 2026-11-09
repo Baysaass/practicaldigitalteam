@@ -214,15 +214,33 @@ export function compute(person: string, C: Ctx, rating: Rating | undefined, weig
         spent += t.spentSec;
       }
       if (t.reopens > 0) reopened++;
+
+      // A task from >= 1 month ago (created or with a deadline >= 25 days before resolution or before period)
+      // was already completed back then in reality, and just closed in Jira recently.
+      // Therefore it must NOT be marked as missed deadline / "хугацаандаа амжаагүй".
+      const isPastMonthTask = Boolean(
+        t.resolvedAt && (
+          (effDue && t.resolvedAt.getTime() - effDue.getTime() >= 25 * DAY) ||
+          (effDue && effDue.getTime() < C.s.getTime()) ||
+          (t.takenAt && t.resolvedAt.getTime() - t.takenAt.getTime() >= 30 * DAY)
+        )
+      );
+
       if (t.resolvedAt) {
         const st = t.startedAt && t.startedAt < t.resolvedAt ? t.startedAt : t.takenAt;
-        if (st) cyc.push((t.resolvedAt.getTime() - st.getTime()) / DAY);
+        if (st) {
+          const durationDays = (t.resolvedAt.getTime() - st.getTime()) / DAY;
+          // Do not distort cycle time with administrative late-close of tasks from months ago
+          if (durationDays <= 30 && !isPastMonthTask) {
+            cyc.push(durationDays);
+          }
+        }
       }
 
       // On-time tracking
       dueN++;
       if (effDue && t.resolvedAt) {
-        if (t.resolvedAt.getTime() <= effDue.getTime()) {
+        if (t.resolvedAt.getTime() <= effDue.getTime() || isPastMonthTask) {
           onTime++;
         }
       } else {

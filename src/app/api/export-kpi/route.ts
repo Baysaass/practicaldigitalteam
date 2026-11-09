@@ -185,7 +185,14 @@ export async function GET(req: NextRequest) {
     quarterTasks.forEach((t) => {
       const isDone = t.statusCategory === "done";
       const due = getTaskDue(t);
-      if (isDone && (!t.resolvedAt || t.resolvedAt <= due)) {
+      const isPastMonthTask = Boolean(
+        t.resolvedAt && (
+          (due && t.resolvedAt.getTime() - due.getTime() >= 25 * 86_400_000) ||
+          (due && due.getTime() < startDate.getTime()) ||
+          (t.takenAt && t.resolvedAt.getTime() - t.takenAt.getTime() >= 30 * 86_400_000)
+        )
+      );
+      if (isDone && (!t.resolvedAt || t.resolvedAt <= due || isPastMonthTask)) {
         onTimeCount++;
       }
     });
