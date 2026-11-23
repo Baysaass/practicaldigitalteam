@@ -168,10 +168,10 @@ async function main() {
   const inProgressIssues = await fetchJira(inProgressJql);
   console.log(`Found ${inProgressIssues.length} In Progress tasks.`);
 
-  // 2. Done recently (from Friday/past 4 days through today)
-  const doneJql = `project in (${PROJECTS.join(",")}) AND statusCategory = "Done" AND updated >= -4d ORDER BY assignee ASC, updated DESC`;
+  // 2. Done recently (past 8 days to cover full last week Monday-Sunday through today)
+  const doneJql = `project in (${PROJECTS.join(",")}) AND statusCategory = "Done" AND updated >= -8d ORDER BY assignee ASC, updated DESC`;
   const doneIssues = await fetchJira(doneJql);
-  console.log(`Found ${doneIssues.length} Done tasks (recent/today).`);
+  console.log(`Found ${doneIssues.length} Done tasks (recent/last week/today).`);
 
   // Build Excel Workbook
   const wb = new ExcelJS.Workbook();
