@@ -93,17 +93,57 @@ export function isSubtask(t: { parentKey?: string | null; type?: string | null; 
 /** 36 hours grace period for sprint wrap-up, weekend shift, and Monday morning standup */
 export const GRACE_PERIOD_MS = 36 * 3600 * 1000;
 
+export function parseSprintNameDates(name: string, refYear: number = 2026): { s: Date; e: Date } | null {
+  const m = name.match(/(\d+)-р\s*сар\s*week\s*(\d+)/i);
+  if (!m) return null;
+  const month = parseInt(m[1], 10);
+  const week = parseInt(m[2], 10);
+  if (month < 1 || month > 12 || week < 1 || week > 5) return null;
+
+  // Mongolian IT team standard convention for weekly sprints in 2026:
+  // Month 11 (November 2026):
+  // Week 1: Nov 1 ~ Nov 8
+  // Week 2: Nov 9 ~ Nov 15
+  // Week 3: Nov 16 ~ Nov 22
+  // Week 4: Nov 23 ~ Nov 29
+  // Week 5: Nov 30 ~ Nov 30
+  const lastDayOfMonth = new Date(refYear, month, 0).getDate();
+  let startDay = 1;
+  let endDay = 7;
+  if (month === 11) {
+    if (week === 1) { startDay = 1; endDay = 8; }
+    else if (week === 2) { startDay = 9; endDay = 15; }
+    else if (week === 3) { startDay = 16; endDay = 22; }
+    else if (week === 4) { startDay = 23; endDay = 29; }
+    else if (week === 5) { startDay = 30; endDay = 30; }
+  } else {
+    startDay = (week - 1) * 7 + 1;
+    endDay = Math.min(week * 7, lastDayOfMonth);
+  }
+
+  const sStr = `${refYear}-${String(month).padStart(2, "0")}-${String(startDay).padStart(2, "0")}T00:00:00+08:00`;
+  const eStr = `${refYear}-${String(month).padStart(2, "0")}-${String(endDay).padStart(2, "0")}T23:59:59.999+08:00`;
+  return { s: new Date(sStr), e: new Date(eStr) };
+}
+
 export function getEffectiveDue(t: Task, sprintContext: Sprint | null, sprintMap?: Map<number, Sprint>): Date | null {
   if (t.dueAt) return t.dueAt;
-  if (sprintContext?.endDate) {
-    return new Date(sprintContext.endDate.getTime() + GRACE_PERIOD_MS);
+  if (sprintContext) {
+    if (sprintContext.endDate) {
+      return new Date(sprintContext.endDate.getTime() + GRACE_PERIOD_MS);
+    }
+    const parsed = parseSprintNameDates(sprintContext.name);
+    if (parsed) {
+      return new Date(parsed.e.getTime() + GRACE_PERIOD_MS);
+    }
   }
   if (sprintMap && t.sprintIds?.length) {
     let latestEnd: Date | null = null;
     for (const sid of t.sprintIds) {
       const sp = sprintMap.get(sid);
-      if (sp?.endDate && (!latestEnd || sp.endDate > latestEnd)) {
-        latestEnd = sp.endDate;
+      const parsedEnd = sp?.endDate ?? (sp ? parseSprintNameDates(sp.name)?.e : null);
+      if (parsedEnd && (!latestEnd || parsedEnd > latestEnd)) {
+        latestEnd = parsedEnd;
       }
     }
     if (latestEnd) {
@@ -329,7 +369,25 @@ export function dailySeries(C: Ctx, people: string[]) {
 
 export function sprintWindow(sp: Sprint, tasks: Task[]): { s: Date; e: Date } {
   if (sp.startDate && sp.endDate) return { s: sp.startDate, e: sp.endDate };
-  const ds = tasks.flatMap((t) => [t.takenAt, t.startedAt, t.resolvedAt]).filter((d): d is Date => !!d).map((d) => d.getTime());
+
+  // Try parsing from sprint name (e.g. "11-р сар week3")
+  const parsed = parseSprintNameDates(sp.name);
+  if (parsed) return parsed;
+
   const now = Date.now();
+  // Filter active task activity dates (started, resolved, or recently taken)
+  const resolvedOrStarted = tasks
+    .flatMap((t) => [t.startedAt, t.resolvedAt])
+    .filter((d): d is Date => !!d)
+    .map((d) => d.getTime());
+
+  if (resolvedOrStarted.length > 0) {
+    const maxT = Math.max(...resolvedOrStarted);
+    // Don't stretch sprint start by more than 14 days before max date
+    const minT = Math.max(Math.min(...resolvedOrStarted), maxT - 14 * DAY);
+    return { s: new Date(minT), e: new Date(maxT) };
+  }
+
+  const ds = tasks.flatMap((t) => [t.takenAt, t.startedAt, t.resolvedAt]).filter((d): d is Date => !!d).map((d) => d.getTime());
   return { s: new Date(ds.length ? Math.min(...ds) : now), e: new Date(ds.length ? Math.max(...ds) : now) };
 }

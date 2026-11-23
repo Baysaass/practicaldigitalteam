@@ -7,6 +7,7 @@ import { getDb } from "@/db";
 import { issues, managerRatings, sprints, issueSprints, settings } from "@/db/schema";
 import { eq, and, ilike } from "drizzle-orm";
 import { dayKey, quarterOf, startOfDay, endOfDay } from "@/lib/time";
+import { parseSprintNameDates } from "@/lib/metrics";
 import { generateKpiAiContent, type TaskForAi } from "@/lib/ai-kpi";
 import { isZakiAuthorized, verifyPersonKpiPassword } from "@/app/actions";
 
@@ -91,7 +92,8 @@ export async function GET(req: NextRequest) {
       let latest: Date | null = null;
       for (const sid of sids) {
         const sp = sprintMap.get(sid);
-        if (sp?.endDate && (!latest || sp.endDate > latest)) latest = sp.endDate;
+        const effectiveEnd = sp?.endDate ?? (sp ? parseSprintNameDates(sp.name)?.e : null);
+        if (effectiveEnd && (!latest || effectiveEnd > latest)) latest = effectiveEnd;
       }
       if (latest) return new Date(latest.getTime() + 36 * 3600 * 1000);
       return endDate;

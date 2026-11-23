@@ -202,10 +202,23 @@ export async function buildView(sp: SearchParams) {
   };
 
   const sprintMap = new Map<number, Sprint>(allSprints.map((s) => [s.id, s]));
-  const sprintTasks = (s: Sprint) => tasks.filter((t) => t.sprintIds.includes(s.id));
+  const sprintTasks = (s: Sprint) => {
+    const directTasks = tasks.filter((t) => t.sprintIds.includes(s.id));
+    const w = sprintWindow(s, directTasks);
+    return tasks.filter((t) => {
+      if (t.sprintIds.includes(s.id)) return true;
+      if (t.sprintIds.length > 0) return false;
+      return Boolean(
+        (t.resolvedAt && t.resolvedAt >= w.s && t.resolvedAt <= w.e) ||
+        (t.startedAt && t.startedAt >= w.s && t.startedAt <= w.e) ||
+        (t.takenAt && t.takenAt >= w.s && t.takenAt <= w.e)
+      );
+    });
+  };
   const ctxFor = (s: Sprint): Ctx => {
+    const directTasks = tasks.filter((t) => t.sprintIds.includes(s.id));
+    const w = sprintWindow(s, directTasks);
     const ts = sprintTasks(s);
-    const w = sprintWindow(s, ts);
     return { sprint: s, tasks: ts, s: w.s, e: w.e, now, allSprints, sprintMap };
   };
   const sprint = filter.sprintId != null ? allSprints.find((s) => s.id === filter.sprintId) ?? null : null;
